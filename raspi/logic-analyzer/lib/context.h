@@ -7,7 +7,7 @@
 
 /* --- proto --- */
 
-int fx2_init_instance(test_configuration_t configuration);
+int fx2_init_instance(test_configuration_t* configuration);
 int fx2_run_instance();
 
 

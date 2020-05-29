@@ -1,7 +1,7 @@
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBSIGROK REQUIRED IMPORTED_TARGET libsigrok)
 
-add_library(analyzer context.c output.c)
+add_library(analyzer context.c output.c timestamp.c)
 
 target_include_directories(analyzer
   PUBLIC ${LIBSIGROK_INCLUDE_DIRS})

@@ -1,24 +1,32 @@
 #include "context.h"
-#include <stdio.h>
 
-#include <libsigrok/libsigrok.h>
 #include "output.h"
 #include "timestamp.h"
 
-static uint8_t last = 255;
-static unsigned long cnt;
+#include <libsigrok/libsigrok.h>
+
+#include <stdio.h>
+#include <stdbool.h>
+
+
 
 static struct sr_context* sr_cntxt;
 struct sr_session* sr_session;
 struct sr_dev_inst* fx2ladw_dvc_instc;
 
+static test_configuration_t* test_conf;
+
+static char active_channel_mask = 0; // stream input is a byte with each channel represententing 1 bit
+
 /* option a) handle every datafeed packet explicitly. This means if we only want to track falling or raising edges */
 /* the logic has to be implemented here seperately. */
 /* an alternative would be using sigrok triggers and checking */
+
 void data_feed_callback(const struct sr_dev_inst *sdi,
                                             const struct sr_datafeed_packet *packet,
                                             void *cb_data) {
-
+static bool initial_df_logic_packet = true;
+static uint8_t last;
 /* SR_API int sr_packet_copy(const struct sr_datafeed_packet *packet, */
 		/* struct sr_datafeed_packet **copy); */
 /* SR_API void sr_packet_free(struct sr_datafeed_packet *packet); */
@@ -26,27 +34,50 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
   switch (packet->type) {
     case SR_DF_HEADER: {
       struct sr_datafeed_header* payload = (struct sr_datafeed_header*) packet->payload;
-      printf("got datafeed header: feed version %d, startime \n", payload->feed_version);
+      printf("got datafeed header: feed version %d, startime %lu\n", payload->feed_version, payload->starttime.tv_usec);
       break;
     }
     case SR_DF_LOGIC: {
+
       struct sr_datafeed_logic* payload = (struct sr_datafeed_logic*) packet->payload;
       uint8_t* dataArray = payload->data;
-      printf("Got datafeed payload of length %lu. Unit size is %d byte\n", payload->length, payload->unitsize);
-      /* printf("DATA FRAME START\n"); */
+
+      // needed to determine block size ...,
+      // it would be better to determine the block size some other way and embedded the information into some kind
+      // of run_information structure. If the block size changes mid run we get a problem
+      if(initial_df_logic_packet) {
+        init_clock(test_conf, payload->length);
+        last = dataArray[payload->length];
+        initial_df_logic_packet = false;
+      }
+      /* printf("Got datafeed payload of length %lu. Unit size is %d byte\n", payload->length, payload->unitsize); */
       for(size_t i = 0; i < payload->length; i++) {
-        /* printf("%d\n", dataArray[i]); */
-        if(dataArray[i] != last) {
-          printf("Got %lu\n", cnt);
-          cnt = 0;
-          last = dataArray[i];
-          timestamp_t data = {.state = last, .time = time(NULL)};
-          write_sample(&data);
-        } else {
-          cnt++;
+        sample_count++;
+        if((dataArray[i]&active_channel_mask) != last) {
+          for (size_t k = 0; k < test_conf->channel_count ; k++) {
+            channel_configuration_t* c_conf = &test_conf->channels[k];
+            char k_channel_mask = (1<<c_conf->channel);
+            int8_t delta = (last&k_channel_mask) - (dataArray[i]&k_channel_mask);
+            uint8_t state;
+            if(delta) {
+              printf("a channel changed state \n");
+              if((c_conf->type & MATCH_FALLING) && delta > 0) { // falling signal
+                state = 0;
+              } else if (c_conf->type & MATCH_RISING){  // rising signal
+                state = 1;
+              }
+              timestamp_t data = {.channel = c_conf->channel, .state = state, .time = get_timestamp()};
+              write_sample(&data);
+            }
+          }
+          last = dataArray[i]&active_channel_mask;
         }
       }
-      /* printf("DATA FRAME END\n"); */
+      // generate a new timestamp roughly every 4 seconds, measured by the amount of gathered samples
+      if(sample_count > 4*test_conf->samplerate) {
+        next_system_timestamp();
+        sample_count = 0;
+      }
       break;
     }
     default:
@@ -73,9 +104,24 @@ static int fx2_cleanup() {
 }
 
 
-int fx2_init_instance(test_configuration_t configuration)
+// current way of stopping the program is by terminating with SIGINT. This should probably be changed to some other method later
+static void sigint_handler(int sig) {
+  printf("received sigint!!\n");
+  fx2_cleanup();
+}
+
+int fx2_init_instance(test_configuration_t* configuration)
 {
-  open_output_file(configuration.logpath);
+  test_conf = configuration;
+
+  // create channel mask
+  for (size_t k = 0; k < test_conf->channel_count ; k++) {
+    active_channel_mask+=1<<test_conf->channels[k].channel;
+  }
+
+  open_output_file(test_conf->logpath);
+  //TODO Needs to handle the case that the session is not yet initialized;
+  signal(SIGINT, sigint_handler);
   // initialize sigrok
   int ret;
 
@@ -140,13 +186,13 @@ int fx2_init_instance(test_configuration_t configuration)
     printf("key: %d\n", key);
 
     if(key == SR_CONF_SAMPLERATE) {
-      guint64 rate = configuration.samplerate;
+      guint64 rate = configuration->samplerate;
       GVariant *data = g_variant_new_uint64 (rate);
       if((ret = sr_config_set(fx2ladw_dvc_instc, NULL, key, data))) {
         printf("Could not set samplerate (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
         return 1;
       }
-      printf("successfully set sample rate to %lu\n", configuration.samplerate);
+      printf("successfully set sample rate to %lu\n", configuration->samplerate);
     }
     GVariant* values;
     switch (ret = sr_config_list(fx2ladw_drv, fx2ladw_dvc_instc, NULL, key, &values)) {
