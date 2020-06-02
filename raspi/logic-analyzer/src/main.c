@@ -10,7 +10,7 @@ int main(int argc, char *argv[])
   test_configuration_t conf = {
     .channels = channels,
     .channel_count = 2,
-    .samplerate = 250000,
+    .samplerate = 24000000,
     .logpath = "testrun-data.csv"
   };
   fx2_init_instance(&conf);

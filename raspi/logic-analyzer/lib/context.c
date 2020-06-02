@@ -51,8 +51,8 @@ static uint8_t last;
         initial_df_logic_packet = false;
       }
       /* printf("Got datafeed payload of length %lu. Unit size is %d byte\n", payload->length, payload->unitsize); */
+      sample_count = 0;
       for(size_t i = 0; i < payload->length; i++) {
-        sample_count++;
         if((dataArray[i]&active_channel_mask) != last) {
           for (size_t k = 0; k < test_conf->channel_count ; k++) {
             channel_configuration_t* c_conf = &test_conf->channels[k];
@@ -66,17 +66,14 @@ static uint8_t last;
               } else if (c_conf->type & MATCH_RISING){  // rising signal
                 state = 1;
               }
-              timestamp_t data = {.channel = c_conf->channel, .state = state, .time = get_timestamp()};
-              write_sample(&data);
+              struct timespec ts;
+              get_timestamp(&ts);
+              timestamp_t data = {.channel = c_conf->channel, .state = state, .time = ts};
+              write_sample(data);
             }
           }
           last = dataArray[i]&active_channel_mask;
         }
-      }
-      // generate a new timestamp roughly every 4 seconds, measured by the amount of gathered samples
-      if(sample_count > 4*test_conf->samplerate) {
-        next_system_timestamp();
-        sample_count = 0;
       }
       break;
     }

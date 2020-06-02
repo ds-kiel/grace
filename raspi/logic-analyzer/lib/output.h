@@ -14,6 +14,6 @@ int open_output_file(char* filename);
 int close_output_file();
 
 // open_output_file has to be called before using write_sample
-int write_sample(timestamp_t* sample);
+int write_sample(timestamp_t sample);
 
 #endif /* OUTPUT_H */

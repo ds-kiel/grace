@@ -14,7 +14,8 @@ timestamp_t* write_buffer;
 // should return -1 if failed
 static int flush_buffer_to_log() {
     for(size_t k = 0; k < buf_index; k++) {
-      fprintf(fp, "%d %d\n", write_buffer[k].time, write_buffer[k].state);
+      timestamp_t* sample = &write_buffer[k];
+      fprintf(fp, "%lu %lu %d\n", sample->time.tv_sec, sample->time.tv_nsec, sample->state);
     }
     buf_index = 0;
     return 1;
@@ -46,11 +47,11 @@ int close_output_file() {
 
 
 // TODO maybe memory manage timestamps in timestamp.h and only
-int write_sample(timestamp_t* sample) {
+int write_sample(timestamp_t sample) {
   #ifndef USE_CONSTANT_SIZE_BUFFER
-  fprintf(fp, "%lu %d\n", sample->time, sample->state);
+  fprintf(fp, "%lu %lu %d\n", sample->time.tv_sec, sample.time->tv_nsec, sample->state);
   #else
-  write_buffer[buf_index] = *sample;
+  write_buffer[buf_index] = sample;
   buf_index++;
   if(buf_index >= CONSTANT_SIZE_BUFFER_ENTRIES) {
     flush_buffer_to_log();
