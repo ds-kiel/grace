@@ -63,3 +63,7 @@
 }
 * FPGA
 ** [[https://www.digikey.de/product-detail/de/lattice-semiconductor-corporation/ICE40HX1K-STICK-EVN/220-2656-ND/4289604][IceStick]]
+* Time Synchronization
+** [[https://www.ohwr.org/project/white-rabbit/wikis/home][white rabbit cern]]
+** [[http://www.rocketmanrc.com/openpps-lessonslearned.html][OpenPPS]]
+** [[https://en.wikipedia.org/wiki/GPS_disciplined_oscillator][GPS disciplined Oscillator]]
