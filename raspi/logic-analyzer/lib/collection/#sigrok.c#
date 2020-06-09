@@ -1,7 +1,7 @@
-#include "context.h"
+#include "sigrok.h"
 
-#include "output.h"
-#include "timestamp.h"
+#include "../output.h"
+#include "../timestamp.h"
 
 #include <libsigrok/libsigrok.h>
 
@@ -249,6 +249,7 @@ int fx2_run_instance () {
   if ((ret = sr_session_run(sr_session)) != SR_OK) {
     printf("Could not run session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
+    xo
   }
 
   fx2_cleanup();

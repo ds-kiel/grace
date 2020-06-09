@@ -1,11 +1,27 @@
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBSIGROK REQUIRED IMPORTED_TARGET libsigrok)
 
-add_library(analyzer context.c output.c timestamp.c)
+
+find_library(PIGPIO_LIBRARY
+        NAMES libpigpio.so
+        HINTS /usr/local/lib)
+
+find_path(PIGPIO_INCLUDE_DIR
+  NAMES pigpio.h)
+
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
+
+add_library(analyzer collection/la_pigpio.c collection/la_sigrok.c output.c timestamp.c)
 
 target_include_directories(analyzer
-  PUBLIC ${LIBSIGROK_INCLUDE_DIRS})
+  PUBLIC ${LIBSIGROK_INCLUDE_DIRS}
+  PUBLIC ${PIGPIO_INCLUDE_DIR}
+  )
 
 target_link_libraries(analyzer
   ${LIBSIGROK_LIBRARIES}
+  ${PIGPIO_LIBRARY}
+  Threads::Threads
   )

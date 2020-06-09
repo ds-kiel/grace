@@ -1,7 +1,7 @@
-#ifndef CONTEXT_H
-#define CONTEXT_H
+#ifndef LA_SIGROK_H
+#define LA_SIGROK_H
 
-#include "configuration.h"
+#include "../configuration.h"
 
 /* create a sigrok instance for fx2ladw compatible devices */
 
@@ -9,6 +9,6 @@
 
 int fx2_init_instance(test_configuration_t* configuration);
 int fx2_run_instance();
+int fx2_end_session();
 
-
-#endif /* CONTEXT_H */
+#endif /* LA_SIGROK_H */
