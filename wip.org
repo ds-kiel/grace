@@ -68,3 +68,8 @@
 ** [[http://www.rocketmanrc.com/openpps-lessonslearned.html][OpenPPS]]
 ** [[https://en.wikipedia.org/wiki/GPS_disciplined_oscillator][GPS disciplined Oscillator]]
 ** [[https://www.u-blox.com/sites/default/files/products/documents/Timing_AppNote_(GPS.G6-X-11007).pdf][u-blox gps timing considerations]]
+** [[http://www.ntp.org/ntpfaq/NTP-s-sw-clocks-quality.htm][NTP Clock Quality]]
+** [[http://doc.ntp.org/4.1.2/refclock.htm][Reference-Clock drivers]]
+   Type22 - pps reference clock
+   type20 - nmea gps
+** [[http://www.ntp.org/ntpfaq/NTP-s-algo-kernel.htm][PPS disclipined kernel clock]]
