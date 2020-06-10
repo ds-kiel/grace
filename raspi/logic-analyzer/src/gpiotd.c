@@ -13,6 +13,9 @@
 
 gpiot_daemon_state_t state;
 
+channel_configuration_t channels[2];
+test_configuration_t conf;
+
 int main(int argc, char *argv[])
 {
   // create UNIX domain socket for ipc with gpiotc
@@ -53,19 +56,22 @@ int main(int argc, char *argv[])
       switch(cmd->type) {
       case GPIOT_START_RECORDING:
         if(state == GPIOTD_IDLE) {
-          channel_configuration_t channels[2] = {
-            {.channel = 0, .type = MATCH_FALLING | MATCH_RISING},
-            {.channel = 1, .type = MATCH_FALLING | MATCH_RISING}
-          };
-          test_configuration_t conf = {
-            .channels = channels,
-            .channel_count = 2,
-            .samplerate = 24000000,
-            .logpath = "testrun-data.csv"
-          };
-          la_pigpio_init_instance(&conf);
-          la_pigpio_run_instance();
-          state = GPIOTD_COLLECTING;
+          channels[0].channel = 0;
+          channels[0].type = MATCH_FALLING | MATCH_RISING;
+          channels[1].channel = 1;
+          channels[1].type = MATCH_FALLING | MATCH_RISING;
+
+          conf.channels = channels;
+          conf.channel_count = 2;
+          conf.logpath = "testrun.csv";
+          conf.samplerate = 24000000;
+
+          if(la_pigpio_init_instance(&conf) < 0) {
+            printf("Could not create pigpio instance\n");
+          } else {
+            la_pigpio_run_instance();
+            state = GPIOTD_COLLECTING;
+          }
         }
         break;
       case GPIOT_STOP_RECORDING:

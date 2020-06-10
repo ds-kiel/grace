@@ -4,10 +4,28 @@
 #include <stdlib.h>
 #include <errno.h>
 
+static void usage() {
+      printf("Missing arguments. usage:\n");
+      printf("   gpiotc [--start|--stop]\n");
+}
+
 int main(int argc, char *argv[])
 {
-  gpio_command* commando;
+  gpiot_command_t commando;
 
+  if (argc < 2) {
+    usage();
+    return EXIT_FAILURE;
+  }
+
+  if(strcmp(argv[1], "--start")) {
+    commando.type = GPIOT_START_RECORDING;
+  } else if (strcmp(argv[1], "--stop")) {
+    commando.type = GPIOT_STOP_RECORDING;
+  } else {
+    usage();
+    return EXIT_FAILURE;
+  }
 
   // connect to gpiotd UNIX domain socket
   int gpiotd_socket;
@@ -28,5 +46,5 @@ int main(int argc, char *argv[])
   }
   printf("Connected to socket %s\n", GPIOT_DOMAIN_SOCKET);
 
-  send(gpiotd_socket, &cmd, sizeof(gpiot_command_t), 0);
+  send(gpiotd_socket, &commando, sizeof(gpiot_command_t), 0);
 }
