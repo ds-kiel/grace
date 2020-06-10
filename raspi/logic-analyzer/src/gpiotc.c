@@ -18,11 +18,12 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  if(strcmp(argv[1], "--start")) {
+  if(!strcmp(argv[1], "--start")) {
     commando.type = GPIOT_START_RECORDING;
-  } else if (strcmp(argv[1], "--stop")) {
+  } else if (!strcmp(argv[1], "--stop")) {
     commando.type = GPIOT_STOP_RECORDING;
   } else {
+    printf("unknown argument %s\n", argv[1]);
     usage();
     return EXIT_FAILURE;
   }

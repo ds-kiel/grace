@@ -11,7 +11,7 @@
 
 #include <unistd.h>
 
-gpiot_daemon_state_t state;
+gpiot_daemon_state_t state = GPIOTD_IDLE;
 
 channel_configuration_t channels[2];
 test_configuration_t conf;
@@ -51,10 +51,10 @@ int main(int argc, char *argv[])
 
     buf_size = recv(gpiotc_socket, buffer, sizeof(gpiot_command_t), 0);
     if(buf_size==sizeof(gpiot_command_t)) {
-      printf("received command\n");
       gpiot_command_t* cmd = (gpiot_command_t*)buffer;
       switch(cmd->type) {
       case GPIOT_START_RECORDING:
+        printf("Received start recording\n");
         if(state == GPIOTD_IDLE) {
           channels[0].channel = 0;
           channels[0].type = MATCH_FALLING | MATCH_RISING;
@@ -66,6 +66,7 @@ int main(int argc, char *argv[])
           conf.logpath = "testrun.csv";
           conf.samplerate = 24000000;
 
+
           if(la_pigpio_init_instance(&conf) < 0) {
             printf("Could not create pigpio instance\n");
           } else {
@@ -75,7 +76,10 @@ int main(int argc, char *argv[])
         }
         break;
       case GPIOT_STOP_RECORDING:
-        la_pigpio_end_instance();
+        if(GPIOTD_COLLECTING){
+          printf("Received stop recording\n");
+          la_pigpio_end_instance();
+        }
         break;
       case GPIOT_GET_RESULTS:
         printf("get results\n");
