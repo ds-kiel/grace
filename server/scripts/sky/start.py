@@ -11,20 +11,42 @@ from psshlib import *
 
 REMOTE_LOGS_PATH = "/home/user/logs"
 REMOTE_SCRIPTS_PATH = "/home/user/scripts"
+REMOTE_GPIO_CLIENT_PATH = "/home/user/gpio-tracer" # TODO install on system and call by $PATH
 REMOTE_JN_SCRIPTS_PATH = os.path.join(REMOTE_SCRIPTS_PATH, "../tmp/sky")
 REMOTE_TMP_PATH = "/home/user/tmp"
 REMOTE_FIRMWARE_PATH = os.path.join(REMOTE_TMP_PATH, "firmware.sky.ihex")
 
+trace_gpio = False
+forward_serial = False
+
+def usage():
+    print "Usage: $start.py command [--parameter value]"
+    print
+    print "Commands:"
+    print "trace_gpio         'bitmask of channels to be traced'"
+    print "forward serial     'forward serial output to host'"
+    sys.exit(1)
 
 if __name__=="__main__":
-  
   if len(sys.argv)<2:
     print "Job directory parameter not found!"
     sys.exit(1)
-    
+
   # The only parameter contains the job directory
   job_dir = sys.argv[1]
   forward_serial = True if sys.argv[2] == "forward" else False
+
+  try:
+    opts, args = getopt.getopt(sys.argv[2:], "", ["trace-gpio" "forward"])
+  except getopt.GetoptError:
+    usage()
+
+  for opt, value in opts:
+    if opt == "--trace-gpio":
+      trace_gpio = True
+    if opt == "--foward"
+      forward_serial = True
+
 
   # Look for the firmware
   firmware_path = None
@@ -33,11 +55,11 @@ if __name__=="__main__":
     if f.endswith(".sky.ihex"):
       firmware_path = os.path.join(job_dir, f)
       break
-       
+
   if firmware_path == None:
     print "No sky firmware found!"
     sys.exit(2)
-      
+
   hosts_path = os.path.join(job_dir, "hosts")
   # Copy firmware to the nodes
   if pscp(hosts_path, firmware_path, REMOTE_FIRMWARE_PATH, "Copying sky firmware to the PI nodes") != 0:
@@ -46,12 +68,37 @@ if __name__=="__main__":
   if pssh(hosts_path, "%s %s"%(os.path.join(REMOTE_JN_SCRIPTS_PATH, "install.sh"), REMOTE_FIRMWARE_PATH), "Installing sky firmware") != 0:
     sys.exit(4)
   # Start serialdump
-  if not forward_serial:
+  if not forward_serial and not trace_gpio:
     remote_log_dir = os.path.join(REMOTE_LOGS_PATH, os.path.basename(job_dir), "log.txt")
     if pssh(hosts_path, "%s %s"%(os.path.join(REMOTE_JN_SCRIPTS_PATH, "serialdump.sh"), remote_log_dir), "Starting serialdump") != 0:
       sys.exit(5)
-  else:
+  else if not trace_gpio:
     remote_log_dir = os.path.join(REMOTE_LOGS_PATH, os.path.basename(job_dir), "log.txt")
     if pssh(hosts_path, "%s %s"%(os.path.join(REMOTE_JN_SCRIPTS_PATH, "serial_forwarder.sh"), remote_log_dir), "Starting serialdump") != 0:
       sys.exit(5)
+  else;
+  if pssh(hosts_path, "%s --start"%(os.path.join(REMOTE_GPIO_PATH "build/src/gpiotc" ) "Start GPIO tracing") != 0: # TODO --start zoul --channels 12
+      sys.exit(6)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

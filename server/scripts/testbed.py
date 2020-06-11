@@ -39,6 +39,7 @@ post_processing = None
 is_nested = False
 force_reboot = False
 forward_serial = False
+trace_gpios = False
 
 MAX_START_ATTEMPTS = 3
 TESTBED_PATH = "/usr/testbed"
@@ -340,7 +341,7 @@ def start(job_id):
     if pssh(hosts_path, "prepare.sh %s"%(os.path.basename(job_dir)), "Preparing the PI nodes", merge_path=True) == 0:
       # run platform start script
       start_script_path = os.path.join(TESTBED_SCRIPTS_PATH, platform, "start.py")
-      if os.path.exists(start_script_path) and subprocess.call([start_script_path, job_dir, "forward" if forward_serial else ""]) == 0:
+      if os.path.exists(start_script_path) and subprocess.call([start_script_path, job_dir, "forward" if forward_serial else ""], "tracegpio" if trace_gpio else "") == 0:
         started = True
       else:
         print "Platform start script %s failed"%(start_script_path)
@@ -499,6 +500,7 @@ def usage():
   print "--nested           'set this if calling from a script that already took the lock'"
   print "--with-reboot      'reboot the raspberry PIs if the job creation fails'"
   print "--forward-serial   'Forwards the serial line data into a TCP socket (tcp://raspi:50000)'"
+  print "--trace-gpio       'trace gpio pins'"  # TODO
   print
   print "Usage of start:"
   print "$testbed.py start [--job-id ID]"
@@ -526,7 +528,7 @@ if __name__=="__main__":
     sys.exit(1)
 
   try:
-    opts, args = getopt.getopt(sys.argv[2:], "", ["name=", "platform=", "hosts=", "copy-from=", "duration=", "job-id=", "start", "force", "no-download", "start-next", "metadata=", "post-processing=", "nested", "with-reboot", "forward-serial"])
+    opts, args = getopt.getopt(sys.argv[2:], "", ["name=", "platform=", "hosts=", "copy-from=", "duration=", "job-id=", "start", "force", "no-download", "start-next", "metadata=", "post-processing=", "nested", "with-reboot", "forward-serial", "trace-gpio"])
   except getopt.GetoptError:
     usage()
 
@@ -563,6 +565,8 @@ if __name__=="__main__":
        force_reboot = True
    elif opt == "--forward-serial":
        forward_serial = True
+   elif opt == "--trace-gpio":
+       trace_gpio = True
 
   if not is_nested and lock_is_taken():
       print "Lock is taken. Try a gain in a few seconds/minutes."

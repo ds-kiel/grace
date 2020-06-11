@@ -6,13 +6,13 @@ A very simple testbed for the IoT!
 
 Build docker image:
 ```
-    docker build . -t testbed
+docker build . -t testbed
 ```
 
 
 Run docker image interactively
 ```
-    docker run -v $PWD/server/:/usr/testbed/ --add-host="raspi01:192.168.1.111" -ti testbed
+docker run -v $PWD/server/:/usr/testbed/ --add-host="raspi01:192.168.1.111" -ti testbed
 ```
 
 A user `developer` is initially created that is allowed to run the testbed script.

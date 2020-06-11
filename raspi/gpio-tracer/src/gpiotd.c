@@ -66,7 +66,6 @@ int main(int argc, char *argv[])
           conf.logpath = "testrun.csv";
           conf.samplerate = 24000000;
 
-
           if(la_pigpio_init_instance(&conf) < 0) {
             printf("Could not create pigpio instance\n");
           } else {
