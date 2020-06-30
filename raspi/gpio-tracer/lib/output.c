@@ -11,11 +11,13 @@ static FILE *fp;
 static size_t buf_index = 0;
 timestamp_t* write_buffer;
 
+// TODO add semaphore synchronisation
+
 // should return -1 if failed
 static int flush_buffer_to_log() {
     for(size_t k = 0; k < buf_index; k++) {
       timestamp_t* sample = &write_buffer[k];
-      fprintf(fp, "%lu %lu %d\n", sample->time.tv_sec, sample->time.tv_nsec, sample->state);
+      fprintf(fp, "%lu%lu %d\n", sample->time.tv_sec, sample->time.tv_nsec, sample->state);
     }
     buf_index = 0;
     return 1;
@@ -26,7 +28,7 @@ static int flush_buffer_to_log() {
 
 int open_output_file(char* filename) {
   // even if we write into buffer, already acquire write stream on file
-  fp = fopen(filename, "w+");
+  fp = fopen(filename, "a+");
 
   #ifdef USE_CONSTANT_SIZE_BUFFER
   write_buffer = (timestamp_t* ) malloc(sizeof(timestamp_t)*CONSTANT_SIZE_BUFFER_ENTRIES);
@@ -49,7 +51,7 @@ int close_output_file() {
 // TODO maybe memory manage timestamps in timestamp.h and only
 int write_sample(timestamp_t sample) {
   #ifndef USE_CONSTANT_SIZE_BUFFER
-  fprintf(fp, "%lu %lu %d\n", sample->time.tv_sec, sample.time->tv_nsec, sample->state);
+  fprintf(fp, "%lu%lu %d\n", sample->time.tv_sec, sample.time->tv_nsec, sample->state);
   #else
   write_buffer[buf_index] = sample;
   buf_index++;

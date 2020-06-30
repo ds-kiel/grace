@@ -22,6 +22,9 @@ static char active_channel_mask = 0; // stream input is a byte with each channel
 /* the logic has to be implemented here seperately. */
 /* an alternative would be using sigrok triggers and checking */
 
+
+long frame_count; // used to determine time. TODO use another type
+
 void data_feed_callback(const struct sr_dev_inst *sdi,
                                             const struct sr_datafeed_packet *packet,
                                             void *cb_data) {
@@ -38,9 +41,9 @@ static uint8_t last;
       break;
     }
     case SR_DF_LOGIC: {
-
       struct sr_datafeed_logic* payload = (struct sr_datafeed_logic*) packet->payload;
       uint8_t* dataArray = payload->data;
+      frame_count++;
 
       // needed to determine block size ...,
       // it would be better to determine the block size some other way and embedded the information into some kind
@@ -67,7 +70,8 @@ static uint8_t last;
                 state = 1;
               }
               struct timespec ts;
-              get_timestamp(&ts);
+              ts.tv_sec = sample_count;
+              ts.tv_nsec = frame_count;
               timestamp_t data = {.channel = c_conf->channel, .state = state, .time = ts};
               write_sample(data);
             }
@@ -88,7 +92,7 @@ static uint8_t last;
 }
 
 // return -1 if cleanup fails
-int fx2_end_session() {
+int la_sigrok_end_session() {
   // uninitialize sigrok
   int ret;
   if ((ret = sr_exit(sr_cntxt)) != SR_OK) {
@@ -100,7 +104,7 @@ int fx2_end_session() {
   return 0;
 }
 
-int fx2_init_instance(test_configuration_t* configuration)
+int la_sigrok_init_instance(test_configuration_t* configuration)
 {
   test_conf = configuration;
 
@@ -232,7 +236,7 @@ int fx2_init_instance(test_configuration_t* configuration)
 
 
 // returns -1 if session could not be starten
-int fx2_run_instance () {
+int la_sigrok_run_instance (void* args) {
   int ret;
   if ((ret = sr_session_start(sr_session)) != SR_OK) {
     printf("Could not start session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
@@ -244,7 +248,7 @@ int fx2_run_instance () {
     return -1;
   }
 
-  fx2_end_session();
+  la_sigrok_end_session();
 
   return 0;
 }

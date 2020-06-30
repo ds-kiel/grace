@@ -16,11 +16,11 @@ typedef struct channel_configuration {
   match_t type; // use FALLING | RISING for detecting both (edges)
 } channel_configuration_t;
 
-typedef struct test_configuration {
+ typedef struct test_configuration {
   channel_configuration_t* channels; // pointer to null terminated array of channel configurations
   size_t channel_count; // use GList, GArray or something else?
   uint64_t samplerate; // TODO check wether this type is 64bit on all platforms
-  char* logpath; // filepath for the output log file
+  char logpath[256]; // filepath for the output log file
 } test_configuration_t;
 
 #endif /* CONFIGURATION_H */

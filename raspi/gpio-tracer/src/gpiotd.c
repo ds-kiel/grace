@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
 {
   // create UNIX domain socket for ipc with gpiotc
   int gpiotd_socket;
-  char *buffer = malloc(sizeof(gpiot_command_t));
+  char *buffer = malloc(sizeof(gpiot_command_header_t));
 
   struct sockaddr_un address;
 
@@ -49,28 +49,44 @@ int main(int argc, char *argv[])
     gpiotc_socket = accept(gpiotd_socket, (struct sockaddr *)&address, &addrlen);
     addrlen = sizeof(struct sockaddr_in);
 
-    buf_size = recv(gpiotc_socket, buffer, sizeof(gpiot_command_t), 0);
-    if(buf_size==sizeof(gpiot_command_t)) {
-      gpiot_command_t* cmd = (gpiot_command_t*)buffer;
+    buf_size = recv(gpiotc_socket, buffer, sizeof(gpiot_command_header_t), 0);
+    if(buf_size==sizeof(gpiot_command_header_t)) {
+      gpiot_command_header_t* cmd = (gpiot_command_header_t*)buffer;
       switch(cmd->type) {
       case GPIOT_START_RECORDING:
         printf("Received start recording\n");
+        gpiot_start_data_t start_data;
+        memcpy(&start_data, cmd->payload, sizeof(gpiot_start_data_t));
+
         if(state == GPIOTD_IDLE) {
           channels[0].channel = 0;
           channels[0].type = MATCH_FALLING | MATCH_RISING;
           channels[1].channel = 1;
           channels[1].type = MATCH_FALLING | MATCH_RISING;
-
           conf.channels = channels;
           conf.channel_count = 2;
-          conf.logpath = "testrun.csv";
+          strcpy(conf.logpath, start_data.out_path);
           conf.samplerate = 24000000;
 
-          if(la_pigpio_init_instance(&conf) < 0) {
-            printf("Could not create pigpio instance\n");
+
+          if(start_data.device == GPIOT_DEVICE_PIGPIO) {
+            printf("Creating pigpio instance\n");
+            if(la_pigpio_init_instance(&conf) < 0) {
+              printf("Could not create pigpio instance\n");
+            } else {
+              la_pigpio_run_instance();
+              state = GPIOTD_COLLECTING;
+            }
+          } else if (start_data.device == GPIOT_DEVICE_SALEAE) {
+            printf("Creating saleae instance\n");
+            if(la_sigrok_init_instance(&conf) < 0) {
+              printf("Could not create pigpio instance\n");
+            } else {
+              la_sigrok_run_instance();
+              state = GPIOTD_COLLECTING;
+            }
           } else {
-            la_pigpio_run_instance();
-            state = GPIOTD_COLLECTING;
+            printf("unknown device. Doing nothing");
           }
         }
         break;
@@ -78,6 +94,7 @@ int main(int argc, char *argv[])
         if(GPIOTD_COLLECTING){
           printf("Received stop recording\n");
           la_pigpio_end_instance();
+          state = GPIOTD_IDLE;
         }
         break;
       case GPIOT_GET_RESULTS:

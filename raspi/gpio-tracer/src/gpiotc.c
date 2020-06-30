@@ -6,26 +6,50 @@
 
 static void usage() {
       printf("Missing arguments. usage:\n");
-      printf("   gpiotc [--start|--stop]\n");
+      printf("   gpiotc [--start <output-path> [--device <pigpio|saleae>] | --stop]\n");
 }
 
 int main(int argc, char *argv[])
 {
-  gpiot_command_t commando;
+  gpiot_command_header_t command;
+  gpiot_devices_t device;
 
   if (argc < 2) {
     usage();
     return EXIT_FAILURE;
   }
 
-  if(!strcmp(argv[1], "--start")) {
-    commando.type = GPIOT_START_RECORDING;
+  gpiot_start_data_t start_data;
+  if(!strcmp(argv[1], "--start") && argc > 2) {
+
+    command.type = GPIOT_START_RECORDING;
+    size_t path_length = strlen(argv[2]);
+    strcpy(start_data.out_path, argv[2]);
+    printf("%s\n", argv[2]);
+    memcpy(command.payload, &start_data, sizeof(gpiot_start_data_t));
+    printf("%lu", path_length);
   } else if (!strcmp(argv[1], "--stop")) {
-    commando.type = GPIOT_STOP_RECORDING;
+    command.type = GPIOT_STOP_RECORDING;
   } else {
-    printf("unknown argument %s\n", argv[1]);
+    printf("unknown or missing arguments %s\n", argv[1]);
     usage();
     return EXIT_FAILURE;
+  }
+
+  if(argc > 3 && !strcmp(argv[3], "--device") && command.type==GPIOT_START_RECORDING) {
+    if (argc > 4) {
+      if (!strcmp(argv[4], "pigpio")) {
+        start_data.device = GPIOT_DEVICE_PIGPIO;
+      } else if (!strcmp(argv[4], "saleae")) {
+        start_data.device = GPIOT_DEVICE_SALEAE;
+      } else {
+        usage();
+      }
+    } else {
+      usage();
+    }
+  } else {
+    start_data.device = GPIOT_DEVICE_PIGPIO;
   }
 
   // connect to gpiotd UNIX domain socket
@@ -47,5 +71,5 @@ int main(int argc, char *argv[])
   }
   printf("Connected to socket %s\n", GPIOT_DOMAIN_SOCKET);
 
-  send(gpiotd_socket, &commando, sizeof(gpiot_command_t), 0);
+  send(gpiotd_socket, &command, sizeof(gpiot_command_header_t), 0);
 }

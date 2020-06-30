@@ -13,7 +13,7 @@ test_configuration_t* c_conf;
 int la_pigpio_init_instance(test_configuration_t* configuration) {
   c_conf = configuration;
   open_output_file(c_conf->logpath);
-  
+
   int ret;
   if ((ret = gpioInitialise()) == PI_INIT_FAILED) {
     printf("Could not create pigpio session code: %d.\n", ret);
