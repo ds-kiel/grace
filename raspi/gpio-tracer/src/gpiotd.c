@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 gpiot_daemon_state_t state = GPIOTD_IDLE;
+gpiot_devices_t device = GPIOT_DEVICE_NONE;
 
 channel_configuration_t channels[2];
 test_configuration_t conf;
@@ -57,8 +58,8 @@ int main(int argc, char *argv[])
         printf("Received start recording\n");
         gpiot_start_data_t start_data;
         memcpy(&start_data, cmd->payload, sizeof(gpiot_start_data_t));
-
         if(state == GPIOTD_IDLE) {
+
           channels[0].channel = 0;
           channels[0].type = MATCH_FALLING | MATCH_RISING;
           channels[1].channel = 1;
@@ -76,6 +77,7 @@ int main(int argc, char *argv[])
             } else {
               la_pigpio_run_instance();
               state = GPIOTD_COLLECTING;
+              device = GPIOT_DEVICE_PIGPIO;
             }
           } else if (start_data.device == GPIOT_DEVICE_SALEAE) {
             printf("Creating saleae instance\n");
@@ -84,16 +86,23 @@ int main(int argc, char *argv[])
             } else {
               la_sigrok_run_instance();
               state = GPIOTD_COLLECTING;
+              device = GPIOT_DEVICE_SALEAE;
             }
           } else {
-            printf("unknown device. Doing nothing");
+            printf("unknown device. Doing nothing\n");
           }
         }
         break;
       case GPIOT_STOP_RECORDING:
-        if(GPIOTD_COLLECTING){
+        if(state == GPIOTD_COLLECTING){
           printf("Received stop recording\n");
-          la_pigpio_end_instance();
+          if (device == GPIOT_DEVICE_PIGPIO) {
+            la_pigpio_end_instance();
+          }
+          else if(device == GPIOT_DEVICE_SALEAE) {
+            la_sigrok_stop_instance();
+          }
+          device = GPIOT_DEVICE_NONE;
           state = GPIOTD_IDLE;
         }
         break;

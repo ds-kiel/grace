@@ -73,3 +73,12 @@
    Type22 - pps reference clock
    type20 - nmea gps
 ** [[http://www.ntp.org/ntpfaq/NTP-s-algo-kernel.htm][PPS disclipined kernel clock]]
+*  MSP430
+** Functional Diagram - USART0, USART1
+  werden eingaben über den Bus gebuffert? Stallt der CPU bis die Übertragung fertig ist?
+
+  Der Schritt MCU - FT232 - USB - HOST ist zwar ungünstig um genaue, zeitgestempelte Traces zu sammeln, sollte aber die Ausführung nicht
+  mehr Bremsen als wenn man den weg MCU - HOST via UART direkt nimmt, da der MCU im Schritt MCU - FT232 zuvor in einen I/O Buffer schreibt.
+
+  Schreiben in den I/O Buffer und Kommunikation mit dem Radio Medium läuft über das selbe Serielle Interface (UART1)
+** https://www.argenox.com/library/msp430/general-purpose-input-output-gpio-chapter-5/

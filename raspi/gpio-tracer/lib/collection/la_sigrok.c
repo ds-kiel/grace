@@ -53,7 +53,7 @@ static uint8_t last;
         last = dataArray[payload->length];
         initial_df_logic_packet = false;
       }
-      /* printf("Got datafeed payload of length %lu. Unit size is %d byte\n", payload->length, payload->unitsize); */
+      printf("Got datafeed payload of length %lu. Unit size is %d byte\n", payload->length, payload->unitsize);
       sample_count = 0;
       for(size_t i = 0; i < payload->length; i++) {
         if((dataArray[i]&active_channel_mask) != last) {
@@ -92,7 +92,7 @@ static uint8_t last;
 }
 
 // return -1 if cleanup fails
-int la_sigrok_end_session() {
+int la_sigrok_stop_instance() {
   // uninitialize sigrok
   int ret;
   if ((ret = sr_exit(sr_cntxt)) != SR_OK) {
@@ -238,17 +238,18 @@ int la_sigrok_init_instance(test_configuration_t* configuration)
 // returns -1 if session could not be starten
 int la_sigrok_run_instance (void* args) {
   int ret;
+
   if ((ret = sr_session_start(sr_session)) != SR_OK) {
     printf("Could not start session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
   }
 
-  if ((ret = sr_session_run(sr_session)) != SR_OK) {
-    printf("Could not run session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
-    return -1;
-  }
+  /* if ((ret = sr_session_run(sr_session)) != SR_OK) { */
+  /*   printf("Could not run session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); */
+  /*   return -1; */
+  /* } */
 
-  la_sigrok_end_session();
+  /* la_sigrok_stop_instance(); */
 
   return 0;
 }

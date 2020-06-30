@@ -16,6 +16,7 @@ typedef enum gpiot_command_type {
 } gpiot_command_type_t;
 
 typedef enum gpiot_devices {
+  GPIOT_DEVICE_NONE,
   GPIOT_DEVICE_PIGPIO,
   GPIOT_DEVICE_SALEAE,
 } gpiot_devices_t;

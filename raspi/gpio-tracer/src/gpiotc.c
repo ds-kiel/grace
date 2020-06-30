@@ -36,21 +36,26 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  if(argc > 3 && !strcmp(argv[3], "--device") && command.type==GPIOT_START_RECORDING) {
-    if (argc > 4) {
-      if (!strcmp(argv[4], "pigpio")) {
-        start_data.device = GPIOT_DEVICE_PIGPIO;
-      } else if (!strcmp(argv[4], "saleae")) {
-        start_data.device = GPIOT_DEVICE_SALEAE;
+  if (command.type==GPIOT_START_RECORDING) {
+    if(argc > 3 && !strcmp(argv[3], "--device")) {
+      if (argc > 4) {
+        if (!strcmp(argv[4], "pigpio")) {
+          start_data.device = GPIOT_DEVICE_PIGPIO;
+        } else if (!strcmp(argv[4], "saleae")) {
+          start_data.device = GPIOT_DEVICE_SALEAE;
+        } else {
+          usage();
+        }
       } else {
         usage();
       }
     } else {
-      usage();
+      start_data.device = GPIOT_DEVICE_PIGPIO;
     }
-  } else {
-    start_data.device = GPIOT_DEVICE_PIGPIO;
+
+    memcpy(command.payload, &start_data, sizeof(gpiot_start_data_t));
   }
+
 
   // connect to gpiotd UNIX domain socket
   int gpiotd_socket;
