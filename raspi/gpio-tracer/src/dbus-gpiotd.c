@@ -55,12 +55,12 @@ static void handle_method_call(GDBusConnection *connnection,
 
   // TODO should the error case return an error value?
   gchar *result;
-  g_print("handle Method invocation with %s\n", method_name);
+  g_printf("handle Method invocation with %s\n", method_name);
   if (!g_strcmp0(method_name, "Start")) {
     const gchar *device;
     const gchar *logpath;
 
-    g_print("Invocation: Start\n");
+    g_printf("Invocation: Start\n");
 
     g_variant_get(parameters, "(&s&s)", &device, &logpath);
     g_printf("Parameters: %s %s\n", device, logpath);
@@ -98,7 +98,7 @@ static void handle_method_call(GDBusConnection *connnection,
   } else if (!g_strcmp0(method_name, "Stop")) {
     const gchar *device;
 
-    g_print("Invocation: Stop\n");
+    g_printf("Invocation: Stop\n");
 
     g_variant_get(parameters, "(&s)", &device);
     g_printf("got: %s\n", device);

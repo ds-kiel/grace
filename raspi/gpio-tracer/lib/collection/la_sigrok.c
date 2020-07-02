@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+static bool running = false;
 
 static struct sr_context* sr_cntxt;
 struct sr_session* sr_session;
@@ -106,11 +107,13 @@ int la_sigrok_stop_instance() {
   return 0;
 }
 
-// TODO find out how to properly kill a session! (This will result in a segfault in libusb_get_next_timeout)
 int la_sigrok_kill_instance() {
   int ret;
 
-  la_sigrok_stop_instance();
+  if(running || sr_session == NULL) {
+    g_printf("Unable to kill instance. Maybe the instance is still running?\n");
+    return -1;
+  }
 
   if ((ret = sr_session_destroy(sr_session)) != SR_OK) {
     printf("Error destroying sigrok session (%s): %s.\n", sr_strerror_name(ret),
@@ -285,8 +288,9 @@ int la_sigrok_init_instance(guint64 samplerate, const gchar* logpath, GVariant* 
   return 0;
 }
 
-void test_callback(void* data) {
+void session_stopped_callback(void* data) {
   printf("Session has stoppped!\n");
+  running = false;
 }
 
 // returns -1 if session could not be starten
@@ -298,14 +302,9 @@ int la_sigrok_run_instance (void* args) {
     return -1;
   }
 
-  sr_session_stopped_callback_set(sr_session, &test_callback, NULL);
+  sr_session_stopped_callback_set(sr_session, &session_stopped_callback, NULL);
 
-  /* if ((ret = sr_session_run(sr_session)) != SR_OK) { */
-  /*   printf("Could not run session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); */
-  /*   return -1; */
-  /* } */
-
-  /* la_sigrok_stop_instance(); */
+  running = true;
 
   return 0;
 }
