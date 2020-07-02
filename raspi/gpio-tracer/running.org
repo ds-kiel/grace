@@ -1,0 +1,24 @@
+#+BEGIN_SRC emacs-lisp :dir "~/Projects/iot-testbed/raspi/gpio-tracer/build/src"
+  (async-shell-command "./gpiotd")
+#+End_SRC
+
+#+RESULTS:
+: #<window 356 on *Async Shell Command*>
+
+#+BEGIN_SRC shell :async :dir "~/Projects/iot-testbed/raspi/gpio-tracer/build/src"
+  ./gpiotc --stop
+#+END_SRC
+
+#+RESULTS:
+: Connected to socket /tmp/gpiotd.socket
+
+#+BEGIN_SRC shell :async :dir "~/Projects/iot-testbed/raspi/gpio-tracer/build/src"
+  ./gpiotc --start test.csv --device saleae
+#+END_SRC
+
+#+RESULTS:
+| name      | org.cau.GpioTracer.TestServer | apperead |
+| trying    | run                           | start    |
+| Response: | Everything                    | good!    |
+|  s/n      |                               |          |
+

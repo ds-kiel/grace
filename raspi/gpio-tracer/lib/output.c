@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 
-static char* output_file_name;
+static const gchar* output_file_name;
 static FILE *fp;
 
 #ifdef USE_CONSTANT_SIZE_BUFFER
@@ -26,9 +26,11 @@ static int flush_buffer_to_log() {
 
 
 
-int open_output_file(char* filename) {
+int open_output_file(const gchar* filename) {
   // even if we write into buffer, already acquire write stream on file
   fp = fopen(filename, "a+");
+
+  if(fp == NULL) return -1;
 
   #ifdef USE_CONSTANT_SIZE_BUFFER
   write_buffer = (timestamp_t* ) malloc(sizeof(timestamp_t)*CONSTANT_SIZE_BUFFER_ENTRIES);
@@ -43,6 +45,7 @@ int close_output_file() {
   #endif
   fclose(fp);
   free(write_buffer);
+
 
   return 0;
 }

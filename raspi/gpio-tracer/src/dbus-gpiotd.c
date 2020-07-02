@@ -1,0 +1,193 @@
+// reference https://github.com/joprietoe/gdbus/blob/master/gdbus-example-server.c
+
+#include "gpiot.h"
+
+#include <collection/la_sigrok.h>
+#include <collection/la_pigpio.h>
+#include <types.h>
+
+#include <stdio.h>
+#include <gio/gio.h>
+#include <glib.h>
+#include <glib/gprintf.h>
+#include <unistd.h>
+
+gpiot_daemon_state_t state = GPIOTD_IDLE;
+gpiot_devices_t device = GPIOT_DEVICE_NONE;
+
+static GDBusNodeInfo* introspection_data = NULL;
+
+/* Introspection data for the service we are exporting */
+static const gchar introspection_xml[] =
+  "<node>"
+  "  <interface name='org.cau.GpioTracer.ControlInterface'>"
+  "    <annotation name='org.cau.GpioTracer.Annotation' value='OnInterface'/>"
+  "    <annotation name='org.cau.GpioTracer.Annotation' value='AlsoOnInterface'/>"
+  "    <method name='Start'>"
+  "      <annotation name='org.cau.GpioTracer.Annotation' value='OnMethod'/>"
+  "      <arg type='s' name='device' direction='in'/>"
+  "      <arg type='s' name='logPath' direction='in'/>"
+  "      <arg type='s' name='result' direction='out'/>"
+  "    </method>"
+  "    <method name='Stop'>"
+  "      <annotation name='org.cau.GpioTracer.Annotation' value='OnMethod'/>"
+  "      <arg type='s' name='device' direction='in'/>"
+  "      <arg type='s' name='result' direction='out'/>"
+  "    </method>"
+  "    <signal name='Something'>"
+  "      <annotation name='org.cau.GpioTracer.Annotation' value='Onsignal'/>"
+  "      <arg type='d' name='speed_in_mph'/>"
+  "      <arg type='s' name='speed_as_string'>"
+  "        <annotation name='org.cau.GpioTracer.Annotation' value='OnArg_NonFirst'/>"
+  "      </arg>"
+  "    </signal>"
+  "    <property type='s' name='Status' access='read'/>"
+  "  </interface>"
+  "</node>";
+
+
+static void handle_method_call(GDBusConnection *connnection,
+                               const gchar *sender, const gchar *object_path,
+                               const gchar *interface_name,
+                               const gchar *method_name, GVariant *parameters,
+                               GDBusMethodInvocation *invocation,
+                               gpointer user_data) {
+
+  // TODO should the error case return an error value?
+  gchar *result;
+  g_print("handle Method invocation with %s\n", method_name);
+  if (!g_strcmp0(method_name, "Start")) {
+    const gchar *device;
+    const gchar *logpath;
+
+    g_print("Invocation: Start\n");
+
+    g_variant_get(parameters, "(&s&s)", &device, &logpath);
+    g_printf("Parameters: %s %s\n", device, logpath);
+
+    if (!g_strcmp0(device, "sigrok")) {
+      GVariantBuilder* channel_modes_builder = g_variant_builder_new(G_VARIANT_TYPE("a(yy)"));
+      GVariant* channel_modes;
+      g_variant_builder_add(channel_modes_builder, "(yy)", 0, MATCH_FALLING | MATCH_RISING);
+      g_variant_builder_add(channel_modes_builder, "(yy)", 1, MATCH_FALLING | MATCH_RISING);
+      g_variant_builder_add(channel_modes_builder, "(yy)", 2, MATCH_FALLING | MATCH_RISING);
+      channel_modes = g_variant_new("a(yy)", channel_modes_builder);
+      g_variant_builder_unref(channel_modes_builder);
+
+      g_print(g_variant_print(channel_modes,TRUE));
+
+      // owner ship of channel_modes is transfered to la_sigrok_init
+      if (la_sigrok_init_instance(12000000, logpath, channel_modes) < 0) {
+        g_printf("Unable to create sigrok instance\n");
+      } else {
+        g_printf("run sigrok instance\n");
+
+        if (la_sigrok_run_instance() < 0) {
+          result = g_strdup_printf("Start of collection failed %s!", device);
+        } else {
+          result = g_strdup_printf("Started collecting on device %s", device);
+          state = GPIOTD_COLLECTING;
+        }
+      }
+    } else {
+      result = g_strdup_printf("Device %s not known!", device);
+    }
+
+    // TODO maybe remove what ever
+
+  } else if (!g_strcmp0(method_name, "Stop")) {
+    const gchar *device;
+
+    g_print("Invocation: Stop\n");
+
+    g_variant_get(parameters, "(&s)", &device);
+    g_printf("got: %s\n", device);
+
+    if (state == GPIOTD_COLLECTING) {
+      if (!g_strcmp0(device, "pigpio")) {
+        la_pigpio_stop_instance();
+      } else if (!g_strcmp0(device, "sigrok")) {
+        la_sigrok_stop_instance();
+      }
+      state = GPIOTD_IDLE;
+      result = g_strdup_printf("Successfully stopped for device %s", device);
+    }
+  } else {
+    result = g_strdup_printf("No instance running for %s", device);
+  }
+
+  g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
+}
+
+static GVariant *handle_get_property(GDBusConnection *connection,
+                                     const gchar *sender,
+                                     const gchar *object_path,
+                                     const gchar *interface_name,
+                                     const gchar *property_name, GError **error,
+                                     gpointer user_data) {
+}
+
+static gboolean handle_set_property(GDBusConnection *connection,
+                                     const gchar *sender,
+                                     const gchar *object_path,
+                                     const gchar *interface_name,
+                                     const gchar *property_name,
+                                     GVariant* value,
+                                     GError **error,
+                                     gpointer user_data) {
+}
+
+static const GDBusInterfaceVTable interface_vtable = {
+  handle_method_call,
+  handle_get_property,
+  handle_set_property,
+};
+
+static void on_bus_acquired(GDBusConnection* connection, const gchar* name, gpointer user_data) {
+  // export objects from here
+  guint registration_id;
+
+  registration_id = g_dbus_connection_register_object(
+      connection, "/org/cau/GpioTracer/ControlObject",
+      introspection_data->interfaces[0], &interface_vtable, NULL, NULL, NULL);
+
+  g_assert(registration_id > 0);
+}
+
+static void on_name_acquired(GDBusConnection* connection, const gchar* name, gpointer user_data) {
+  g_printf("acquired dbus name %s\n", name);
+}
+
+static void on_name_lost(GDBusConnection* connection, const gchar* name, gpointer user_data) {
+  g_printf("lost dbus name %s\n", name);
+}
+
+int main(int argc, char *argv[])
+{
+  GMainContext* main_context;
+  guint owner_id;
+  GBusNameOwnerFlags flags;
+
+  main_context  =  g_main_context_new();
+  g_main_context_push_thread_default(main_context);
+
+  introspection_data = g_dbus_node_info_new_for_xml(introspection_xml, NULL);
+  g_assert(introspection_data != NULL);
+
+  // take name from other connection, but also allow others to take this connection
+  flags = G_BUS_NAME_OWNER_FLAGS_REPLACE | G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT;
+  owner_id = g_bus_own_name(G_BUS_TYPE_SESSION, "org.cau.GpioTracer.ControlServer", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL);
+
+
+  while (1) { // TODO main loop
+    g_main_context_iteration(main_context, TRUE);
+  }
+
+  // ------ destruction ------
+
+  g_bus_unown_name(owner_id);
+  g_dbus_node_info_unref(introspection_data);
+  g_main_context_pop_thread_default(main_context);
+
+  return 0;
+}

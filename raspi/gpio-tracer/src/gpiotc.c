@@ -25,9 +25,7 @@ int main(int argc, char *argv[])
     command.type = GPIOT_START_RECORDING;
     size_t path_length = strlen(argv[2]);
     strcpy(start_data.out_path, argv[2]);
-    printf("%s\n", argv[2]);
     memcpy(command.payload, &start_data, sizeof(gpiot_start_data_t));
-    printf("%lu", path_length);
   } else if (!strcmp(argv[1], "--stop")) {
     command.type = GPIOT_STOP_RECORDING;
   } else {

@@ -3,22 +3,22 @@
 
 #include <time.h>
 #include <sys/time.h>
+#include <glib.h>
 
-#include "configuration.h"
 
 // TODO rename
 // used in case the incoming data stream has to be buffered first
 typedef struct timestamp {
-  uint8_t channel; // channel for which the state is recorded
+  guint8 channel; // channel for which the state is recorded
   char state;
   struct timespec time;
 } timestamp_t;
 
 
-extern uint32_t sample_count;
+extern guint64 sample_count;
 
 // return -1 on error
-int init_clock(test_configuration_t* configuration, unsigned long block_size);
+int init_clock(guint64 samplerate, unsigned long block_size);
 void next_system_timestamp();
 int get_timestamp(struct timespec *ts);
 #endif /* TIMESTAMP_H */

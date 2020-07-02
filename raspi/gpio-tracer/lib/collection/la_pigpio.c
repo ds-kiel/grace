@@ -7,12 +7,9 @@
 #include <pigpio.h>
 #include <stdio.h>
 
-test_configuration_t* c_conf;
-
 // returns -1 if pigpio instance creation failed
-int la_pigpio_init_instance(test_configuration_t* configuration) {
-  c_conf = configuration;
-  open_output_file(c_conf->logpath);
+int la_pigpio_init_finstance(const gchar *logpath) {
+  open_output_file(logpath);
 
   int ret;
   if ((ret = gpioInitialise()) == PI_INIT_FAILED) {
@@ -33,7 +30,7 @@ int la_pigpio_run_instance() {
   gpioSetISRFunc(23, EITHER_EDGE, 0, &isr_handler);
 }
 
-int la_pigpio_end_instance() {
+int la_pigpio_stop_instance() {
   close_output_file();
   gpioTerminate();
 }

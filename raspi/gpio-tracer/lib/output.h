@@ -2,6 +2,7 @@
 #define OUTPUT_H
 
 #include "timestamp.h"
+#include <glib.h>
 
 /* If USE_CONSTANT_SIZE_BUFFER is defined data will be collected in memory and only */
 /* written to disk after collection has ended. If undefined write every sample directly to disk. */
@@ -10,7 +11,7 @@
 #define CONSTANT_SIZE_BUFFER_ENTRIES 40e6
 
 // returns -1 if file can't be opened for writing
-int open_output_file(char* filename);
+int open_output_file(const gchar* filename);
 int close_output_file();
 
 // open_output_file has to be called before using write_sample

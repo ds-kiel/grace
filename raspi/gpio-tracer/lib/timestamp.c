@@ -5,7 +5,7 @@
 #define CLOCK_TYPE CLOCK_MONOTONIC
 
 unsigned long b_size; // block size
-uint32_t sample_count;
+guint64 sample_count;
 
 struct timespec start_time; // TODO a start time is also passed by the first datafeed header packet.
  // Use unsigned long or uint64_t? Is it better to let the program fail on compile while being explicit on how long a time capture may take
@@ -15,10 +15,10 @@ struct timespec start_time; // TODO a start time is also passed by the first dat
 double seconds_per_sample;
 
 
-int init_clock(test_configuration_t* configuration, unsigned long block_size) {
+int init_clock(guint64 samplerate, unsigned long block_size) {
   /* start_time = time(NULL); */
   clock_gettime(CLOCK_TYPE, &start_time);
-  seconds_per_sample = (double)b_size/configuration->samplerate;
+  seconds_per_sample = (double)b_size/samplerate;
   b_size = block_size;
   return 1;
 }

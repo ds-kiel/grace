@@ -2,26 +2,24 @@
 
 #include "../output.h"
 #include "../timestamp.h"
+#include "../types.h"
 
 #include <libsigrok/libsigrok.h>
+#include <glib/gprintf.h>
 
 #include <stdio.h>
 #include <stdbool.h>
-
 
 
 static struct sr_context* sr_cntxt;
 struct sr_session* sr_session;
 struct sr_dev_inst* fx2ladw_dvc_instc;
 
-static test_configuration_t* test_conf;
-
 static char active_channel_mask = 0; // stream input is a byte with each channel represententing 1 bit
-
-/* option a) handle every datafeed packet explicitly. This means if we only want to track falling or raising edges */
-/* the logic has to be implemented here seperately. */
-/* an alternative would be using sigrok triggers and checking */
-
+gint8 channel_count;
+struct channel_mode {gint8 channel; gint8 mode;};
+static struct channel_mode* channels;
+static uint64_t samplerate = 0;
 
 long frame_count; // used to determine time. TODO use another type
 
@@ -49,7 +47,7 @@ static uint8_t last;
       // it would be better to determine the block size some other way and embedded the information into some kind
       // of run_information structure. If the block size changes mid run we get a problem
       if(initial_df_logic_packet) {
-        init_clock(test_conf, payload->length);
+        init_clock(samplerate, payload->length);
         last = dataArray[payload->length];
         initial_df_logic_packet = false;
       }
@@ -57,22 +55,21 @@ static uint8_t last;
       sample_count = 0;
       for(size_t i = 0; i < payload->length; i++) {
         if((dataArray[i]&active_channel_mask) != last) {
-          for (size_t k = 0; k < test_conf->channel_count ; k++) {
-            channel_configuration_t* c_conf = &test_conf->channels[k];
-            char k_channel_mask = (1<<c_conf->channel);
+          for (size_t k = 0; k < channel_count ; k++) {
+            char k_channel_mask = (1<<channels[k].channel);
             int8_t delta = (last&k_channel_mask) - (dataArray[i]&k_channel_mask);
             uint8_t state;
             if(delta) {
               printf("a channel changed state \n");
-              if((c_conf->type & MATCH_FALLING) && delta > 0) { // falling signal
+              if((channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
                 state = 0;
-              } else if (c_conf->type & MATCH_RISING){  // rising signal
+              } else if (channels[k].mode & MATCH_RISING){  // rising signal
                 state = 1;
               }
               struct timespec ts;
               ts.tv_sec = sample_count;
               ts.tv_nsec = frame_count;
-              timestamp_t data = {.channel = c_conf->channel, .state = state, .time = ts};
+              timestamp_t data = {.channel = channels[k].channel, .state = state, .time = ts};
               write_sample(data);
             }
           }
@@ -93,35 +90,88 @@ static uint8_t last;
 
 // return -1 if cleanup fails
 int la_sigrok_stop_instance() {
-  // uninitialize sigrok
   int ret;
-  if ((ret = sr_exit(sr_cntxt)) != SR_OK) {
-    printf("Error shutting down libsigkrok (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
+
+  g_printf("Stopping sigrok instance\n");
+
+  // uninitialize sigrok
+  free(channels);
+  if ((ret = sr_session_stop(sr_session)) != SR_OK) {
+    printf("Error stopping sigrok session (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
   }
+
   close_output_file();
 
   return 0;
 }
 
-int la_sigrok_init_instance(test_configuration_t* configuration)
-{
-  test_conf = configuration;
+// TODO find out how to properly kill a session! (This will result in a segfault in libusb_get_next_timeout)
+int la_sigrok_kill_instance() {
+  int ret;
 
-  // create channel mask
-  for (size_t k = 0; k < test_conf->channel_count ; k++) {
-    active_channel_mask+=1<<test_conf->channels[k].channel;
+  la_sigrok_stop_instance();
+
+  if ((ret = sr_session_destroy(sr_session)) != SR_OK) {
+    printf("Error destroying sigrok session (%s): %s.\n", sr_strerror_name(ret),
+           sr_strerror(ret));
+    return -1;
   }
 
-  open_output_file(test_conf->logpath);
-  //TODO Needs to handle the case that the session is not yet initialized;
+  if ((ret = sr_exit(sr_cntxt)) != SR_OK) {
+    printf("Error shutting down libsigkrok (%s): %s.\n", sr_strerror_name(ret),
+           sr_strerror(ret));
+    return -1;
+  }
 
+  return 0;
+}
+
+// ownership of channel_modes is transfered to la_sigrok_init_instance(), so the GVariant should not be unreffed by the callee!
+// returns -1 on failure. returns 1 if session already exists
+int la_sigrok_init_instance(guint64 samplerate, const gchar* logpath, GVariant* channel_modes)
+{
+  g_printf("Initializing sigrok instance\n");
+  // parse channel_modes to create active_channel_mask
+  GVariantIter *iter;
+  gint8 length;
+  gint8 channel,mode;
+
+  g_variant_get(channel_modes, "a(yy)", &iter);
+  length = 0;
+  while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) length++;
+  g_variant_iter_free(iter);
+  channels = malloc(length * sizeof(struct channel_mode));
+
+  g_variant_get(channel_modes, "a(yy)", &iter);
+  gint8 k = 0;
+  while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) {
+    g_printf("add channel %d with mode %d\n", channel, mode);
+    active_channel_mask += 1<<channel;
+    channels[k].channel = channel;
+    channels[k].mode = mode;
+    k++;
+  }
+
+  g_variant_iter_free(iter);
+  g_variant_unref(channel_modes);
+
+  if (open_output_file(logpath) < 0) {
+    g_printf("Unable to open output file %s\n", logpath);
+    return -1;
+  }
+
+
+  if (sr_session != NULL) {
+    return 1;
+    g_printf("instance already initialized!\n");
+  }
   // initialize sigrok
   int ret;
 
   if ((ret = sr_init(&sr_cntxt)) != SR_OK) {
     printf("Error initializing libsigrok (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
-    return 1;
+    return -1;
   }
 
   printf("Host: %s\n", sr_buildinfo_host_get());
@@ -143,25 +193,25 @@ int la_sigrok_init_instance(test_configuration_t* configuration)
 
   if (fx2ladw_drv==NULL) {
     printf("Could not find driver fx2lafw!\n");
-    return 1;
+    return -1;
   }
 
   if ((ret = sr_driver_init(sr_cntxt, fx2ladw_drv)) != SR_OK) {
     printf("Could not initialize driver fx2lafw!\n");
-    return 1;
+    return -1;
   }
 
   // try to initialize a device instance
   GSList* fx2ladw_dvcs;
   if((fx2ladw_dvcs = sr_driver_scan(fx2ladw_drv, NULL)) == NULL) {
     printf("Could not find any fx2ladw compatible devices\n");
-    return 1;
+    return -1;
   }
   fx2ladw_dvc_instc = fx2ladw_dvcs->data;
 
   if ((ret = sr_dev_open(fx2ladw_dvc_instc)) != SR_OK) {
     printf("Could not open device (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
-    return 1;
+    return -1;
   }
 
   /* --- Device configuration --- */
@@ -170,7 +220,7 @@ int la_sigrok_init_instance(test_configuration_t* configuration)
   // TODO create Macro for this pattern
   if((fx2ladw_scn_opts = sr_driver_scan_options_list(fx2ladw_drv)) == NULL) {
     printf("Invalid arguments?\n");
-    return 1;
+    return -1;
   }
 
    GArray* fx2ladw_dvc_opts = sr_dev_options(fx2ladw_drv, fx2ladw_dvc_instc, NULL);
@@ -179,20 +229,11 @@ int la_sigrok_init_instance(test_configuration_t* configuration)
     enum sr_configkey key = g_array_index(fx2ladw_dvc_opts, enum sr_configkey, k);
     printf("key: %d\n", key);
 
-    if(key == SR_CONF_SAMPLERATE) {
-      guint64 rate = configuration->samplerate;
-      GVariant *data = g_variant_new_uint64 (rate);
-      if((ret = sr_config_set(fx2ladw_dvc_instc, NULL, key, data))) {
-        printf("Could not set samplerate (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
-        return 1;
-      }
-      printf("successfully set sample rate to %lu\n", configuration->samplerate);
-    }
     GVariant* values;
     switch (ret = sr_config_list(fx2ladw_drv, fx2ladw_dvc_instc, NULL, key, &values)) {
       case SR_ERR: {
         printf("Something did go wrong (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
-        return 1;
+        return -1;
         break;
       }
       case SR_ERR_ARG: {
@@ -207,24 +248,34 @@ int la_sigrok_init_instance(test_configuration_t* configuration)
       default:
         break;
     }
+
+    if(key == SR_CONF_SAMPLERATE) {
+      guint64 rate = samplerate;
+      GVariant *data = g_variant_new_uint64 (rate);
+      if((ret = sr_config_set(fx2ladw_dvc_instc, NULL, key, data))) {
+        printf("Could not set samplerate (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
+        return -1;
+      }
+      printf("successfully set sample rate to %lu\n", samplerate);
+    }
   }
   g_array_free(fx2ladw_dvc_opts, TRUE);
 
   // setting up new sigrok session
   if ((ret = sr_session_new(sr_cntxt, &sr_session)) != SR_OK) {
     printf("Unable to create session (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
-    return 1;
+    return -1;
   }
 
   if ((ret = sr_session_dev_add(sr_session, fx2ladw_dvc_instc)) != SR_OK) {
     printf("Could not add device to instance (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
-    return 1;
+    return -1;
   }
 
   void* data;
   if ((ret = sr_session_datafeed_callback_add(sr_session, &data_feed_callback, data)) != SR_OK) {
     printf("Could not add device to instance (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
-    return 1;
+    return -1;
   }
 
   //cleanup
@@ -234,6 +285,9 @@ int la_sigrok_init_instance(test_configuration_t* configuration)
   return 0;
 }
 
+void test_callback(void* data) {
+  printf("Session has stoppped!\n");
+}
 
 // returns -1 if session could not be starten
 int la_sigrok_run_instance (void* args) {
@@ -243,6 +297,8 @@ int la_sigrok_run_instance (void* args) {
     printf("Could not start session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
   }
+
+  sr_session_stopped_callback_set(sr_session, &test_callback, NULL);
 
   /* if ((ret = sr_session_run(sr_session)) != SR_OK) { */
   /*   printf("Could not run session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); */
