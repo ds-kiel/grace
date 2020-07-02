@@ -102,7 +102,7 @@ static void on_name_appeared(GDBusConnection *connection, const gchar *name,
     if (logpath != NULL) {
       _logpath = logpath;
     } else {
-      _logpath = "logs/output.csv";
+      _logpath = "/tmp/gpio-default-log.csv"; // TODO don't output if no logpath is passed
     }
     parameters = g_variant_new("(ss)", _device, _logpath);
   } else if(stop) {

@@ -91,10 +91,11 @@ static void handle_method_call(GDBusConnection *connnection,
       }
     } else if (!g_strcmp0(device, "pigpio")) {
       if(la_pigpio_init_instance(logpath) < 0) {
-        g_printf("Unable to create pigpio instance\n");
+        result = g_strdup_printf("Unable to create pigpio instance");
       } else {
         la_pigpio_run_instance(); // TODO implement error checking when needed
         state = GPIOTD_COLLECTING;
+        result = g_strdup_printf("Started collecting on device %s", device);
       }
     } else {
       result = g_strdup_printf("Device %s not known!", device);
@@ -116,9 +117,9 @@ static void handle_method_call(GDBusConnection *connnection,
       }
       state = GPIOTD_IDLE;
       result = g_strdup_printf("Successfully stopped for device %s", device);
+    } else {
+      result = g_strdup_printf("No instance running for %s", device);
     }
-  } else {
-    result = g_strdup_printf("No instance running for %s", device);
   }
 
   g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
