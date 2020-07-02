@@ -8,7 +8,7 @@
 #include <stdio.h>
 
 // returns -1 if pigpio instance creation failed
-int la_pigpio_init_finstance(const gchar *logpath) {
+int la_pigpio_init_instance(const gchar *logpath) {
   open_output_file(logpath);
 
   int ret;

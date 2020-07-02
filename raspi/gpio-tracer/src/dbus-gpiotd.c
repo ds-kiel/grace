@@ -20,25 +20,25 @@ static GDBusNodeInfo* introspection_data = NULL;
 /* Introspection data for the service we are exporting */
 static const gchar introspection_xml[] =
   "<node>"
-  "  <interface name='org.cau.GpioTracer.ControlInterface'>"
-  "    <annotation name='org.cau.GpioTracer.Annotation' value='OnInterface'/>"
-  "    <annotation name='org.cau.GpioTracer.Annotation' value='AlsoOnInterface'/>"
+  "  <interface name='org.cau.gpiot.ControlInterface'>"
+  "    <annotation name='org.cau.gpiot.Annotation' value='OnInterface'/>"
+  "    <annotation name='org.cau.gpiot.Annotation' value='AlsoOnInterface'/>"
   "    <method name='Start'>"
-  "      <annotation name='org.cau.GpioTracer.Annotation' value='OnMethod'/>"
+  "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
   "      <arg type='s' name='device' direction='in'/>"
   "      <arg type='s' name='logPath' direction='in'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
   "    <method name='Stop'>"
-  "      <annotation name='org.cau.GpioTracer.Annotation' value='OnMethod'/>"
+  "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
   "      <arg type='s' name='device' direction='in'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
   "    <signal name='Something'>"
-  "      <annotation name='org.cau.GpioTracer.Annotation' value='Onsignal'/>"
+  "      <annotation name='org.cau.gpiot.Annotation' value='Onsignal'/>"
   "      <arg type='d' name='speed_in_mph'/>"
   "      <arg type='s' name='speed_as_string'>"
-  "        <annotation name='org.cau.GpioTracer.Annotation' value='OnArg_NonFirst'/>"
+  "        <annotation name='org.cau.gpiot.Annotation' value='OnArg_NonFirst'/>"
   "      </arg>"
   "    </signal>"
   "    <property type='s' name='Status' access='read'/>"
@@ -89,12 +89,17 @@ static void handle_method_call(GDBusConnection *connnection,
           state = GPIOTD_COLLECTING;
         }
       }
+    } else if (!g_strcmp0(device, "pigpio")) {
+      if(la_pigpio_init_instance(logpath) < 0) {
+        g_printf("Unable to create pigpio instance\n");
+      } else {
+        la_pigpio_run_instance(); // TODO implement error checking when needed
+        state = GPIOTD_COLLECTING;
+      }
     } else {
       result = g_strdup_printf("Device %s not known!", device);
     }
-
-    // TODO maybe remove what ever
-
+    
   } else if (!g_strcmp0(method_name, "Stop")) {
     const gchar *device;
 
@@ -103,7 +108,7 @@ static void handle_method_call(GDBusConnection *connnection,
     g_variant_get(parameters, "(&s)", &device);
     g_printf("got: %s\n", device);
 
-    if (state == GPIOTD_COLLECTING) {
+    if (state == GPIOTD_COLLECTING) { // TODO track what device exactly is collecting!
       if (!g_strcmp0(device, "pigpio")) {
         la_pigpio_stop_instance();
       } else if (!g_strcmp0(device, "sigrok")) {
@@ -148,7 +153,7 @@ static void on_bus_acquired(GDBusConnection* connection, const gchar* name, gpoi
   guint registration_id;
 
   registration_id = g_dbus_connection_register_object(
-      connection, "/org/cau/GpioTracer/ControlObject",
+      connection, "/org/cau/gpiot/ControlObject",
       introspection_data->interfaces[0], &interface_vtable, NULL, NULL, NULL);
 
   g_assert(registration_id > 0);
@@ -168,6 +173,8 @@ int main(int argc, char *argv[])
   guint owner_id;
   GBusNameOwnerFlags flags;
 
+  g_printf("Started gpiot daemon!\n");
+  
   main_context  =  g_main_context_new();
   g_main_context_push_thread_default(main_context);
 
@@ -176,7 +183,7 @@ int main(int argc, char *argv[])
 
   // take name from other connection, but also allow others to take this connection
   flags = G_BUS_NAME_OWNER_FLAGS_REPLACE | G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT;
-  owner_id = g_bus_own_name(G_BUS_TYPE_SESSION, "org.cau.GpioTracer.ControlServer", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL);
+  owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.cau.gpiot", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL);
 
 
   while (1) { // TODO main loop

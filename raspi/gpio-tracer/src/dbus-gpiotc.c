@@ -46,7 +46,7 @@ static const gchar* daemon_call_control_interface_method(GDBusConnection *connec
   method_reply_message = NULL;
 
   method_call_message = g_dbus_message_new_method_call(
-      name_owner, "/org/cau/GpioTracer/ControlObject", "org.cau.GpioTracer.ControlInterface",
+      name_owner, "/org/cau/gpiot/ControlObject", "org.cau.gpiot.ControlInterface",
       method);
 
   g_dbus_message_set_body(method_call_message,
@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
   }
 
 
-  watcher_id = g_bus_watch_name(G_BUS_TYPE_SESSION, "org.cau.GpioTracer.ControlServer",
+  watcher_id = g_bus_watch_name(G_BUS_TYPE_SYSTEM, "org.cau.gpiot",
                                 G_BUS_NAME_WATCHER_FLAGS_NONE, on_name_appeared,
                                 on_name_vanished, NULL, NULL);
 

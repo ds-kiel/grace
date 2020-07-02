@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=org.cau.gpiot
+Exec=/bin/false
+User=root
+SystemdService=dbus-org.cau.gpiot.service
