@@ -17,7 +17,7 @@ timestamp_t* write_buffer;
 static int flush_buffer_to_log() {
     for(size_t k = 0; k < buf_index; k++) {
       timestamp_t* sample = &write_buffer[k];
-      fprintf(fp, "%lu%lu %d\n", sample->time.tv_sec, sample->time.tv_nsec, sample->state);
+      fprintf(fp, "%lu %lu %d\n", sample->time.tv_sec, sample->time.tv_nsec, sample->state);
     }
     buf_index = 0;
     return 1;
