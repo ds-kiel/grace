@@ -1,7 +1,6 @@
 #include "la_sigrok.h"
 
 #include "../output.h"
-#include "../timestamp.h"
 #include "../types.h"
 
 #include <libsigrok/libsigrok.h>
@@ -20,19 +19,24 @@ static char active_channel_mask = 0; // stream input is a byte with each channel
 gint8 channel_count;
 struct channel_mode {gint8 channel; gint8 mode;};
 static struct channel_mode* channels;
-static uint64_t samplerate = 0;
+static uint64_t _samplerate = 0;
+static double _nsec_per_frame;
+static double _nsec_per_sample; // TODO double 64 bit type
 
-long frame_count; // used to determine time. TODO use another type
+long frame_count = 0; // used to determine time. TODO use another type
+uint32_t sample_count = 0;
+
+void timestamp_from_samples(long frame_count, uint32_t sample_count, struct timespec* ts_target) {
+  long time_in_nsec = (frame_count-1) * _nsec_per_frame + _nsec_per_frame * sample_count;
+  ts_target->tv_sec = time_in_nsec / 1e9;
+  ts_target->tv_nsec = time_in_nsec % (long)1e9 - time_in_nsec;
+}
 
 void data_feed_callback(const struct sr_dev_inst *sdi,
                                             const struct sr_datafeed_packet *packet,
                                             void *cb_data) {
-static bool initial_df_logic_packet = true;
-static uint8_t last;
-/* SR_API int sr_packet_copy(const struct sr_datafeed_packet *packet, */
-		/* struct sr_datafeed_packet **copy); */
-/* SR_API void sr_packet_free(struct sr_datafeed_packet *packet); */
-
+  static bool initial_df_logic_packet = true;
+  static uint8_t last;
   switch (packet->type) {
     case SR_DF_HEADER: {
       struct sr_datafeed_header* payload = (struct sr_datafeed_header*) packet->payload;
@@ -42,17 +46,19 @@ static uint8_t last;
     case SR_DF_LOGIC: {
       struct sr_datafeed_logic* payload = (struct sr_datafeed_logic*) packet->payload;
       uint8_t* dataArray = payload->data;
-      frame_count++;
 
       // needed to determine block size ...,
       // it would be better to determine the block size some other way and embedded the information into some kind
       // of run_information structure. If the block size changes mid run we get a problem
       if(initial_df_logic_packet) {
-        init_clock(samplerate, payload->length);
         last = dataArray[payload->length];
         initial_df_logic_packet = false;
+        _nsec_per_frame = _nsec_per_sample * payload->length;
       }
-      printf("Got datafeed payload of length %lu. Unit size is %d byte\n", payload->length, payload->unitsize);
+
+      frame_count++;
+
+      printf("Got datafeed payload of length %" PRIu64 " Unit size is %" PRIu16 " byte\n", payload->length, payload->unitsize);
       sample_count = 0;
       for(size_t i = 0; i < payload->length; i++) {
         if((dataArray[i]&active_channel_mask) != last) {
@@ -68,14 +74,14 @@ static uint8_t last;
                 state = 1;
               }
               struct timespec ts;
-              ts.tv_sec = sample_count;
-              ts.tv_nsec = frame_count;
+              timestamp_from_samples(frame_count, sample_count, &ts);
               timestamp_t data = {.channel = channels[k].channel, .state = state, .time = ts};
               write_sample(data);
             }
           }
           last = dataArray[i]&active_channel_mask;
         }
+        sample_count++;
       }
       break;
     }
@@ -135,6 +141,12 @@ int la_sigrok_kill_instance() {
 int la_sigrok_init_instance(guint64 samplerate, const gchar* logpath, GVariant* channel_modes)
 {
   g_printf("Initializing sigrok instance\n");
+
+  if (sr_session != NULL) {
+    return 1;
+    g_printf("instance already initialized!\n");
+  }
+
   // parse channel_modes to create active_channel_mask
   GVariantIter *iter;
   gint8 length;
@@ -164,11 +176,6 @@ int la_sigrok_init_instance(guint64 samplerate, const gchar* logpath, GVariant* 
     return -1;
   }
 
-
-  if (sr_session != NULL) {
-    return 1;
-    g_printf("instance already initialized!\n");
-  }
   // initialize sigrok
   int ret;
 
@@ -259,7 +266,9 @@ int la_sigrok_init_instance(guint64 samplerate, const gchar* logpath, GVariant* 
         printf("Could not set samplerate (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
         return -1;
       }
-      printf("successfully set sample rate to %lu\n", samplerate);
+      _samplerate = samplerate;
+      _nsec_per_sample = (1/(double)_samplerate)*1e9;
+      printf("successfully set sample rate to %" PRIu64 "\n", _samplerate)
     }
   }
   g_array_free(fx2ladw_dvc_opts, TRUE);

@@ -16,8 +16,11 @@ See [stackoverflow](https://serverfault.com/questions/892465/starting-systemd-se
 First make sure to enable and start the systemd service:
 
 ```
-    systemctl enable gpiot
-    systemctl start gpiot
+    ln -s build/src/gpiotd
+    ln -s build/src/gpiotc
+    systemctl daemon-reload
+    systemctl enable dbus-org.cau.gpiot
+    systemctl start dbus-org.cau.gpiot
 ```
 
 After that the daemon can be controlled with `gpiotc`.
@@ -27,7 +30,8 @@ After that the daemon can be controlled with `gpiotc`.
 Start tracing with sigrok and save traces in a log file:
 
 ```
-    gpiotc --start --device=sigrok --logpath=log.csv
+    ./gpiotc --start --device=sigrok --logpath=/home/user/logs/analyse/sigrok-count-timestamps-2000hz.csv
+    ./gpiotc --stop --device=sigrok
 ```
 
 
@@ -35,4 +39,5 @@ Start tracing with sigrok and save traces in a log file:
 
 ```
     systemctl restart dbus-org.cau.gpiot.service && journalctl -u dbus-org.cau.gpiot -f
+    ./gpiotc --start --device=sigrok --logpath=/home/user/logs/analyse/sigrok-count-timestamps-1hz.csv && sleep 20 && ./gpiotc --stop --device=sigrok
 ```

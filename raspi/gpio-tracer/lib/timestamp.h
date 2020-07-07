@@ -15,10 +15,11 @@ typedef struct timestamp {
 } timestamp_t;
 
 
-extern guint64 sample_count;
+/* extern guint64 sample_count; */
 
 // return -1 on error
 int init_clock(guint64 samplerate, unsigned long block_size);
 void next_system_timestamp();
 int get_timestamp(struct timespec *ts);
 #endif /* TIMESTAMP_H */
+wi
