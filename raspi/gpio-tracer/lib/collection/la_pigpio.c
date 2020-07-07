@@ -21,7 +21,8 @@ int la_pigpio_init_instance(const gchar *logpath) {
 void isr_handler(int gpio, int level, uint32_t tick) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
-  timestamp_t data = {.channel = 0, .state = level, .time = ts};
+
+  timestamp_t data = {.channel = 0, .state = level, .time = ts.tv_nsec + ts.tv_sec * 1e9};
   write_sample(data);
 }
 

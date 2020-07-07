@@ -3,6 +3,7 @@
 
 #include <time.h>
 #include <sys/time.h>
+#include <inttypes.h>
 #include <glib.h>
 
 
@@ -11,7 +12,7 @@
 typedef struct timestamp {
   guint8 channel; // channel for which the state is recorded
   char state;
-  struct timespec time;
+  uint64_t time; // in nanoseconds
 } timestamp_t;
 
 
@@ -22,4 +23,3 @@ int init_clock(guint64 samplerate, unsigned long block_size);
 void next_system_timestamp();
 int get_timestamp(struct timespec *ts);
 #endif /* TIMESTAMP_H */
-wi

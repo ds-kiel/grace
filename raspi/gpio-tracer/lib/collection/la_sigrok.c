@@ -17,7 +17,7 @@ struct sr_dev_inst* fx2ladw_dvc_instc;
 
 static char active_channel_mask = 0; // stream input is a byte with each channel represententing 1 bit
 gint8 channel_count;
-struct channel_mode {gint8 channel; gint8 mode;};
+struct channel_mode {uint8_t channel; gint8 mode;};
 static struct channel_mode* channels;
 static uint64_t _samplerate = 0;
 static double _nsec_per_frame;
@@ -26,10 +26,8 @@ static double _nsec_per_sample; // TODO double 64 bit type
 long frame_count = 0; // used to determine time. TODO use another type
 uint32_t sample_count = 0;
 
-void timestamp_from_samples(long frame_count, uint32_t sample_count, struct timespec* ts_target) {
-  long time_in_nsec = (frame_count-1) * _nsec_per_frame + _nsec_per_frame * sample_count;
-  ts_target->tv_sec = time_in_nsec / 1e9;
-  ts_target->tv_nsec = time_in_nsec % (long)1e9 - time_in_nsec;
+uint64_t timestamp_from_samples(long frame_count, uint32_t sample_count) {
+  return (uint64_t) ((frame_count-1) * _nsec_per_frame + _nsec_per_sample * sample_count);
 }
 
 void data_feed_callback(const struct sr_dev_inst *sdi,
@@ -51,7 +49,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
       // it would be better to determine the block size some other way and embedded the information into some kind
       // of run_information structure. If the block size changes mid run we get a problem
       if(initial_df_logic_packet) {
-        last = dataArray[payload->length];
+        last = dataArray[0]&active_channel_mask;
         initial_df_logic_packet = false;
         _nsec_per_frame = _nsec_per_sample * payload->length;
       }
@@ -63,7 +61,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
       for(size_t i = 0; i < payload->length; i++) {
         if((dataArray[i]&active_channel_mask) != last) {
           for (size_t k = 0; k < channel_count ; k++) {
-            char k_channel_mask = (1<<channels[k].channel);
+            uint8_t k_channel_mask = (1<<channels[k].channel);
             int8_t delta = (last&k_channel_mask) - (dataArray[i]&k_channel_mask);
             uint8_t state;
             if(delta) {
@@ -73,9 +71,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
               } else if (channels[k].mode & MATCH_RISING){  // rising signal
                 state = 1;
               }
-              struct timespec ts;
-              timestamp_from_samples(frame_count, sample_count, &ts);
-              timestamp_t data = {.channel = channels[k].channel, .state = state, .time = ts};
+              timestamp_t data = {.channel = channels[k].channel, .state = state, .time = timestamp_from_samples(frame_count, sample_count)};
               write_sample(data);
             }
           }
@@ -157,6 +153,7 @@ int la_sigrok_init_instance(guint64 samplerate, const gchar* logpath, GVariant* 
   while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) length++;
   g_variant_iter_free(iter);
   channels = malloc(length * sizeof(struct channel_mode));
+  channel_count = length;
 
   g_variant_get(channel_modes, "a(yy)", &iter);
   gint8 k = 0;
@@ -268,7 +265,7 @@ int la_sigrok_init_instance(guint64 samplerate, const gchar* logpath, GVariant* 
       }
       _samplerate = samplerate;
       _nsec_per_sample = (1/(double)_samplerate)*1e9;
-      printf("successfully set sample rate to %" PRIu64 "\n", _samplerate)
+      printf("successfully set sample rate to %" PRIu64 "\n", _samplerate);
     }
   }
   g_array_free(fx2ladw_dvc_opts, TRUE);
