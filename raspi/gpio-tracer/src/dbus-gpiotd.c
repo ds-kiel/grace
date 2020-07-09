@@ -12,6 +12,10 @@
 #include <glib/gprintf.h>
 #include <unistd.h>
 
+#include <pigpio.h>
+
+#define TRANSMITTER_GPIO_PIN 21
+
 gpiot_daemon_state_t state = GPIOTD_IDLE;
 gpiot_devices_t device = GPIOT_DEVICE_NONE;
 
@@ -100,7 +104,7 @@ static void handle_method_call(GDBusConnection *connnection,
     } else {
       result = g_strdup_printf("Device %s not known!", device);
     }
-    
+
   } else if (!g_strcmp0(method_name, "Stop")) {
     const gchar *device;
 
@@ -168,14 +172,32 @@ static void on_name_lost(GDBusConnection* connection, const gchar* name, gpointe
   g_printf("lost dbus name %s\n", name);
 }
 
+
+gboolean stop_transmit(gpointer user_data) {
+  printf("Stop!\n");
+  gpioWrite(TRANSMITTER_GPIO_PIN, 0);
+  return FALSE;
+}
+
+gboolean start_transmit(gpointer context) {
+  GSource *transmit_stop_source;
+  printf("Transmitting!\n");
+  gpioWrite(TRANSMITTER_GPIO_PIN, 1);
+
+  transmit_stop_source = g_timeout_source_new(100);
+  g_source_set_callback (transmit_stop_source, stop_transmit, NULL, NULL);
+  g_source_attach (transmit_stop_source, (GMainContext*) context);
+  return TRUE;
+}
+
 int main(int argc, char *argv[])
 {
   GMainContext* main_context;
   guint owner_id;
   GBusNameOwnerFlags flags;
+  GSource *transmit_source;
 
   g_printf("Started gpiot daemon!\n");
-  
   main_context  =  g_main_context_new();
   g_main_context_push_thread_default(main_context);
 
@@ -184,8 +206,15 @@ int main(int argc, char *argv[])
 
   // take name from other connection, but also allow others to take this connection
   flags = G_BUS_NAME_OWNER_FLAGS_REPLACE | G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT;
-  owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.cau.gpiot", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL);
+  owner_id = g_bus_own_name(G_BUS_TYPE_SESSION, "org.cau.gpiot", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL);
 
+  g_printf("Setup gpio pin for gps flooding!\n");
+  gpioInitialise();
+  gpioSetMode(TRANSMITTER_GPIO_PIN, PI_OUTPUT);
+
+  transmit_source = g_timeout_source_new_seconds (1);
+  g_source_set_callback (transmit_source, start_transmit, main_context, NULL);
+  g_source_attach (transmit_source, main_context);
 
   while (1) { // TODO main loop
     g_main_context_iteration(main_context, TRUE);
