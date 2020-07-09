@@ -13,12 +13,15 @@ timestamp_t* write_buffer;
 
 // TODO add semaphore synchronisation
 
+//" TODO complete output # timestamp,observer_id,node_id,pin_name,value\n" +
+
 // should return -1 if failed
 static int flush_buffer_to_log() {
     for(size_t k = 0; k < buf_index; k++) {
       timestamp_t* sample = &write_buffer[k];
-      fprintf(fp, "%c %" PRIu64 " %d\n", sample->channel, sample->time, sample->state);
+      fprintf(fp, "%c,%d,%" PRIu64 "\n", sample->channel, sample->state, sample->time);
     }
+
     buf_index = 0;
     return 1;
 }
@@ -29,7 +32,7 @@ static int flush_buffer_to_log() {
 int open_output_file(const gchar* filename) {
   // even if we write into buffer, already acquire write stream on file
   fp = fopen(filename, "a+");
-
+  fprintf("GPIO, Edge, Time\n");
   if(fp == NULL) return -1;
 
   #ifdef USE_CONSTANT_SIZE_BUFFER
@@ -54,7 +57,7 @@ int close_output_file() {
 // TODO maybe memory manage timestamps in timestamp.h and only
 int write_sample(timestamp_t sample) {
   #ifndef USE_CONSTANT_SIZE_BUFFER
-  fprintf(fp, "%c %" PRIu64 " %d\n", sample->channel, sample->time, sample->state);
+  fprintf(fp, "%c,%d,%" PRIu64 "\n", sample->channel, sample->state, sample->time);
   #else
   write_buffer[buf_index] = sample;
   buf_index++;
