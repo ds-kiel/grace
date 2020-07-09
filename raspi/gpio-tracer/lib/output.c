@@ -32,7 +32,7 @@ static int flush_buffer_to_log() {
 int open_output_file(const gchar* filename) {
   // even if we write into buffer, already acquire write stream on file
   fp = fopen(filename, "a+");
-  fprintf("GPIO, Edge, Time\n");
+  fprintf(fp, "GPIO, Edge, Time\n");
   if(fp == NULL) return -1;
 
   #ifdef USE_CONSTANT_SIZE_BUFFER
