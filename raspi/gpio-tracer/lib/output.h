@@ -11,7 +11,7 @@
 #define CONSTANT_SIZE_BUFFER_ENTRIES 40e6
 
 // returns -1 if file can't be opened for writing
-int open_output_file(const gchar* filename);
+int open_output_file(const gchar* filename, gboolean overwrite);
 int close_output_file();
 
 // open_output_file has to be called before using write_sample

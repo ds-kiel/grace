@@ -78,12 +78,12 @@ static void handle_method_call(GDBusConnection *connnection,
 
       // owner ship of channel_modes is transfered to la_sigrok_init
       if (la_sigrok_init_instance(12000000, logpath, channel_modes) < 0) {
-        g_printf("Unable to create sigrok instance\n");
+        result = g_strdup_printf("Unable to init sigrok instance\n");
       } else {
         g_printf("run sigrok instance\n");
 
         if (la_sigrok_run_instance() < 0) {
-          result = g_strdup_printf("Start of collection failed %s!", device);
+          result = g_strdup_printf("Unable to run sigrok instance %s!", device);
         } else {
           result = g_strdup_printf("Started collecting on device %s", device);
           state = GPIOTD_COLLECTING;
@@ -100,7 +100,7 @@ static void handle_method_call(GDBusConnection *connnection,
     } else {
       result = g_strdup_printf("Device %s not known!", device);
     }
-    
+
   } else if (!g_strcmp0(method_name, "Stop")) {
     const gchar *device;
 
@@ -175,7 +175,7 @@ int main(int argc, char *argv[])
   GBusNameOwnerFlags flags;
 
   g_printf("Started gpiot daemon!\n");
-  
+
   main_context  =  g_main_context_new();
   g_main_context_push_thread_default(main_context);
 

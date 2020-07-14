@@ -12,7 +12,7 @@
 typedef struct timestamp {
   guint8 channel; // channel for which the state is recorded
   char state;
-  uint64_t time; // in nanoseconds
+  guint64 time; // in nanoseconds
 } timestamp_t;
 
 

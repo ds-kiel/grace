@@ -3,13 +3,12 @@
 #include "../timestamp.h"
 #include "../output.h"
 
-
 #include <pigpio.h>
 #include <stdio.h>
 
 // returns -1 if pigpio instance creation failed
 int la_pigpio_init_instance(const gchar *logpath) {
-  open_output_file(logpath);
+  open_output_file(logpath, TRUE);
 
   int ret;
   if ((ret = gpioInitialise()) == PI_INIT_FAILED) {
