@@ -12,6 +12,7 @@
 #include <glib/gprintf.h>
 #include <unistd.h>
 
+
 gpiot_daemon_state_t state = GPIOTD_IDLE;
 gpiot_devices_t device = GPIOT_DEVICE_NONE;
 
@@ -185,7 +186,6 @@ int main(int argc, char *argv[])
   // take name from other connection, but also allow others to take this connection
   flags = G_BUS_NAME_OWNER_FLAGS_REPLACE | G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT;
   owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.cau.gpiot", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL);
-
 
   while (1) { // TODO main loop
     g_main_context_iteration(main_context, TRUE);
