@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+static const guint8 _pps_channel = 1; // CH2 is used for the pps signal
+
 static gboolean running = FALSE;
 
 static struct sr_context* sr_cntxt;
@@ -26,15 +28,17 @@ static double _nsec_per_sample; // TODO double 64 bit type
 static guint64 _frame_count; // used to determine time. TODO use another type
 static guint32 _sample_count;
 
-guint64 timestamp_from_samples(guint64 frame_count, guint32 sample_count) {
+static inline guint64 timestamp_from_samples(guint64 frame_count, guint32 sample_count) {
   return (guint64) ((frame_count-1) * _nsec_per_frame + _nsec_per_sample * sample_count);
 }
+
 
 void data_feed_callback(const struct sr_dev_inst *sdi,
                                             const struct sr_datafeed_packet *packet,
                                             void *cb_data) {
   static gboolean initial_df_logic_packet = TRUE;
   static uint8_t last;
+  static guint64 last_pps_timestamp = 0;
   switch (packet->type) {
     case SR_DF_HEADER: {
       struct sr_datafeed_header* payload = (struct sr_datafeed_header*) packet->payload;
@@ -59,7 +63,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
 
       _frame_count++;
 
-      printf("Got datafeed payload of length %" PRIu64 " Unit size is %" PRIu16 " byte\n", payload->length, payload->unitsize);
+      /* printf("Got datafeed payload of length %" PRIu64 " Unit size is %" PRIu16 " byte\n", payload->length, payload->unitsize); */
       _sample_count = 0;
       for(size_t i = 0; i < payload->length; i++) {
         if((dataArray[i]&_active_channel_mask) != last) {
@@ -68,14 +72,35 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
             int8_t delta = (last&k_channel_mask) - (dataArray[i]&k_channel_mask);
             uint8_t state;
             if(delta) {
-              printf("a channel changed state \n");
-              if((_channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
+              // Filter pps signal
+              if(k == _pps_channel) {
+                /* g_printf("PPS Signal\n"); */
+                if(delta < 1) { // Rising signal save timestamp
+                  last_pps_timestamp = timestamp_from_samples(_frame_count, _sample_count);
+                } else { // Falling signal
+                  if(last_pps_timestamp > 0) { // atleast one rising signal had to previously happen
+                    guint64 current_pps_timestamp;
+                    guint64 difference;
+
+                    current_pps_timestamp = timestamp_from_samples(_frame_count, _sample_count);
+                    difference = current_pps_timestamp - last_pps_timestamp;
+                    if (difference > PPS_PULSE_LENGTH-PPS_PULSE_TOLERANCE && difference < PPS_PULSE_LENGTH + PPS_PULSE_TOLERANCE) {
+                      printf("difference: %" PRIu64 "\n", difference);
+                      timestamp_t data = {.channel = _pps_channel, .state = 1, .time = last_pps_timestamp};
+                      write_sample(data);
+                    }
+                  }
+                }
+              } else {
+                printf("Some channel changed state \n");
+                if((_channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
                 state = 0;
               } else if (_channels[k].mode & MATCH_RISING){  // rising signal
                 state = 1;
               }
               timestamp_t data = {.channel = _channels[k].channel, .state = state, .time = timestamp_from_samples(_frame_count, _sample_count)};
               write_sample(data);
+              }
             }
           }
           last = dataArray[i]&_active_channel_mask;

@@ -4,6 +4,9 @@
 #include <glib.h>
 /* create a sigrok instance for fx2ladw compatible devices */
 
+#define PPS_PULSE_LENGTH 30*1e6 // in Nanoseconds e.g. one pulse is 30 Milliseconds long
+#define PPS_PULSE_TOLERANCE  5*1e6// Divergence in Nanoseconds from pulse length that still identifies as pps signal
+
 struct channel_mode {
   guint8 channel;
   gint8 mode;
