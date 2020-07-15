@@ -38,11 +38,13 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                                             void *cb_data) {
   static gboolean initial_df_logic_packet = TRUE;
   static uint8_t last;
-  static guint64 last_pps_timestamp = 0;
+  static guint64 last_pps_timestamp;
   switch (packet->type) {
     case SR_DF_HEADER: {
       struct sr_datafeed_header* payload = (struct sr_datafeed_header*) packet->payload;
       printf("got datafeed header: feed version %d, startime %lu\n", payload->feed_version, payload->starttime.tv_usec);
+      initial_df_logic_packet = TRUE;
+      last_pps_timestamp = 0;
       break;
     }
     case SR_DF_LOGIC: {
@@ -157,13 +159,18 @@ static int la_sigrok_kill_instance() {
     return -1;
   }
 
+  sr_session = NULL;
+  sr_cntxt = NULL;
+
+  g_printf("Successfully killed sigrok instance\n");
+
   return 0;
 }
 
 
 void session_stopped_callback(void* data) {
   g_printf("Session has stoppped!\n");
-  running = false;
+  running = FALSE;
   if (la_sigrok_kill_instance() < 0) {
       g_printf("Could not destroy instance");
   }
@@ -187,8 +194,9 @@ int la_sigrok_init_instance(guint64 samplerate, const gchar* logpath, GVariant* 
   g_variant_iter_free(iter);
   _channels = malloc(length * sizeof(struct channel_mode));
   _channel_count = length;
-  printf("here");
   g_variant_get(channel_modes, "a(yy)", &iter);
+
+  _active_channel_mask = 0;
   gint8 k = 0;
   while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) {
     g_printf("add channel %d with mode %d\n", channel, mode);

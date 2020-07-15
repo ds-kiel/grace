@@ -78,7 +78,7 @@ static void handle_method_call(GDBusConnection *connnection,
       g_print(g_variant_print(channel_modes,TRUE));
 
       // owner ship of channel_modes is transfered to la_sigrok_init
-      if (la_sigrok_init_instance(12000000, logpath, channel_modes) < 0) {
+      if (la_sigrok_init_instance(24000000, logpath, channel_modes) < 0) {
         result = g_strdup_printf("Unable to init sigrok instance\n");
       } else {
         g_printf("run sigrok instance\n");
