@@ -2,11 +2,15 @@
 
 #include "gpiot.h"
 
-#include <collection/la_sigrok.h>
-#include <collection/la_pigpio.h>
+#include <transmitter.h>
+
+#include <la_sigrok.h>
+#include <la_pigpio.h>
 #include <types.h>
+#include <inttypes.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <gio/gio.h>
 #include <glib.h>
 #include <glib/gprintf.h>
@@ -14,18 +18,6 @@
 #include <pigpio.h>
 
 #define TRANSMITTER_GPIO_PIN 23
-/* #define TRANSMITTER_TRANSFER_REPEAT 40 */
-/* #define TRANSMITTER_HIGH_LENGTH 400 */
-/* #define TRANSMITTER_LOW_LENGTH 200 */
-/* #define TRANSMITTER_PULSE_INTERVAL 50 */
-
-#define TRANSMITTER_TRANSFER_REPEAT 40
-#define TRANSMITTER_HIGH_LENGTH 200
-#define TRANSMITTER_LOW_LENGTH 100
-#define TRANSMITTER_PULSE_INTERVAL 20
-
-#define TRANSMITTER_DO_NOTHING_AFTER 400
-#define TRANSMITTER_DO_NOTHING_FOR 1
 
 gpiot_daemon_state_t state = GPIOTD_IDLE;
 gpiot_devices_t device = GPIOT_DEVICE_NONE;
@@ -48,6 +40,18 @@ static const gchar introspection_xml[] =
   "    <method name='Stop'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
   "      <arg type='s' name='device' direction='in'/>"
+  "      <arg type='s' name='result' direction='out'/>"
+  "    </method>"
+  "    <method name='AnnounceStart'>"
+  "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
+  "      <arg type='s' name='result' direction='out'/>"
+  "    </method>"
+  "    <method name='AnnounceStop'>"
+  "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
+  "      <arg type='s' name='result' direction='out'/>"
+  "    </method>"
+  "    <method name='CheckState'>" // used to check whether the sync start/stop package arrived
+  "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
   "    <signal name='Something'>"
@@ -80,7 +84,7 @@ static void handle_method_call(GDBusConnection *connnection,
     g_printf("Invocation: Start\n");
 
     g_variant_get(parameters, "(&su&s)", &device, &samplerate, &logpath);
-    g_printf("Parameters: %s %lu %s\n", device, samplerate, logpath);
+    g_printf("Parameters: %s %" PRIu32 "%s\n", device, samplerate, logpath);
 
     if (!g_strcmp0(device, "sigrok")) {
       GVariantBuilder* channel_modes_builder = g_variant_builder_new(G_VARIANT_TYPE("a(yy)"));
@@ -171,7 +175,7 @@ static void on_bus_acquired(GDBusConnection* connection, const gchar* name, gpoi
   guint registration_id;
 
   registration_id = g_dbus_connection_register_object(
-      connection, "/org/cau/gpiot/ControlObject",
+      connection, "/org/cau/gpiot/Controller",
       introspection_data->interfaces[0], &interface_vtable, NULL, NULL, NULL);
 
   g_assert(registration_id > 0);
@@ -185,42 +189,27 @@ static void on_name_lost(GDBusConnection* connection, const gchar* name, gpointe
   g_printf("lost dbus name %s\n", name);
 }
 
-gboolean stop_transmit(gpointer user_data) {
+gboolean send_sync_pulse() {
+  gpioWrite(TRANSMITTER_GPIO_PIN, 1);
+  g_usleep(TRANSMITTER_HIGH_LENGTH*200);
   gpioWrite(TRANSMITTER_GPIO_PIN, 0);
-  return FALSE;
+  g_usleep(TRANSMITTER_LOW_LENGTH*200);
 }
 
 gboolean start_transmit(gpointer context) {
-  static int packet_send_count = 0;
-  static int do_nothing_count = 0;
   GSource *transmit_stop_source;
-  if(packet_send_count > TRANSMITTER_DO_NOTHING_AFTER) {
-    /* for(int i = 0; i < TRANSMITTER_TRANSFER_REPEAT; i++) { */
-        gpioWrite(TRANSMITTER_GPIO_PIN, 1);
-        g_usleep(TRANSMITTER_HIGH_LENGTH*200);
-        gpioWrite(TRANSMITTER_GPIO_PIN, 0);
-        g_usleep(TRANSMITTER_LOW_LENGTH*200);
-    /* } */
-    do_nothing_count++;
-  } else {
-      for(int i = 0; i < TRANSMITTER_TRANSFER_REPEAT; i++) {
-        gpioWrite(TRANSMITTER_GPIO_PIN, 1);
-        g_usleep(TRANSMITTER_HIGH_LENGTH);
-        gpioWrite(TRANSMITTER_GPIO_PIN, 0);
-        g_usleep(TRANSMITTER_LOW_LENGTH);
-      }
-  }
 
-  if(do_nothing_count >= TRANSMITTER_DO_NOTHING_FOR) {
-    packet_send_count = 0;
-    do_nothing_count = 0;
+  for(int i = 0; i < TRANSMITTER_TRANSFER_REPEAT; i++) {
+    gpioWrite(TRANSMITTER_GPIO_PIN, 1);
+    g_usleep(TRANSMITTER_HIGH_LENGTH);
+    gpioWrite(TRANSMITTER_GPIO_PIN, 0);
+    g_usleep(TRANSMITTER_LOW_LENGTH);
   }
 
   /* transmit_stop_source = g_timeout_source_new(TRANSMITTER_HIGH_LENGTH); */
   /* g_source_set_callback (transmit_stop_source, stop_transmit, NULL, NULL); */
   /* g_source_attach (transmit_stop_source, (GMainContext*) context); */
 
-  packet_send_count++;
   return TRUE;
 }
 

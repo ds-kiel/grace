@@ -1,7 +1,7 @@
-#include "la_pigpio.h"
+#include <la_pigpio.h>
 
-#include "../timestamp.h"
-#include "../output.h"
+#include <timestamp.h>
+#include <output.h>
 
 #include <pigpio.h>
 #include <stdio.h>

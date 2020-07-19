@@ -18,6 +18,7 @@ add_library(analyzer collection/la_pigpio.c collection/la_sigrok.c output.c time
 target_include_directories(analyzer
   PUBLIC ${LIBSIGROK_INCLUDE_DIRS}
   PUBLIC ${PIGPIO_INCLUDE_DIR}
+  PUBLIC "${PROJECT_SOURCE_DIR}/include"
   )
 
 target_link_libraries(analyzer

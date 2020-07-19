@@ -48,7 +48,7 @@ static const gchar* daemon_call_control_interface_method(GDBusConnection *connec
   method_reply_message = NULL;
 
   method_call_message = g_dbus_message_new_method_call(
-      name_owner, "/org/cau/gpiot/ControlObject", "org.cau.gpiot.ControlInterface",
+      name_owner, "/org/cau/gpiot/Controller", "org.cau.gpiot.ControllerInterface",
       method);
 
   g_dbus_message_set_body(method_call_message,

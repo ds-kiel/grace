@@ -1,8 +1,7 @@
-#include "output.h"
+#include <output.h>
 
 #include <stdlib.h>
 #include <stdio.h>
-
 
 static const gchar* output_file_name;
 static FILE *fp;

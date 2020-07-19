@@ -1,7 +1,7 @@
-#include "la_sigrok.h"
+#include <la_sigrok.h>
 
-#include "../output.h"
-#include "../types.h"
+#include <output.h>
+#include <types.h>
 
 #include <libsigrok/libsigrok.h>
 #include <glib/gprintf.h>
@@ -21,7 +21,7 @@ static char _active_channel_mask; // stream input is a byte with each channel re
 static guint8 _channel_count;
 
 static struct channel_mode* _channels;
-static guint64 _samplerate;
+static guint32 _samplerate;
 static double _nsec_per_frame;
 static double _nsec_per_sample; // TODO double 64 bit type
 
@@ -190,7 +190,7 @@ void session_stopped_callback(void* data) {
 
 // ownership of channel_modes is transfered to la_sigrok_init_instance(), so the GVariant should not be unreffed by the callee!
 // returns -1 on failure. returns 1 if session already exists
-int la_sigrok_init_instance(guint64 samplerate, const gchar* logpath, GVariant* channel_modes)
+int la_sigrok_init_instance(guint32 samplerate, const gchar* logpath, GVariant* channel_modes)
 {
   g_printf("Initializing sigrok instance\n");
 
@@ -316,7 +316,7 @@ int la_sigrok_init_instance(guint64 samplerate, const gchar* logpath, GVariant* 
     }
 
     if(key == SR_CONF_SAMPLERATE) {
-      guint64 rate = samplerate;
+      guint32 rate = samplerate;
       GVariant *data = g_variant_new_uint64 (rate);
       if((ret = sr_config_set(fx2ladw_dvc_instc, NULL, key, data))) {
         printf("Could not set samplerate (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));

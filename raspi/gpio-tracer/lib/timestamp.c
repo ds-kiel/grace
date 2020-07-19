@@ -1,5 +1,5 @@
 // https://www.man7.org/linux/man-pages/man2/clock_gettime.2.html
-#include "timestamp.h"
+#include <timestamp.h>
 #include <stdio.h>
 
 #define CLOCK_TYPE CLOCK_MONOTONIC
