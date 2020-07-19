@@ -1,4 +1,4 @@
-// reference https://github.com/joprietoe/gdbus/blob/master/gdbus-example-server.c
+ // reference https://github.com/joprietoe/gdbus/blob/master/gdbus-example-server.c
 
 #include "gpiot.h"
 
@@ -11,7 +11,21 @@
 #include <glib.h>
 #include <glib/gprintf.h>
 #include <unistd.h>
+#include <pigpio.h>
 
+#define TRANSMITTER_GPIO_PIN 23
+/* #define TRANSMITTER_TRANSFER_REPEAT 40 */
+/* #define TRANSMITTER_HIGH_LENGTH 400 */
+/* #define TRANSMITTER_LOW_LENGTH 200 */
+/* #define TRANSMITTER_PULSE_INTERVAL 50 */
+
+#define TRANSMITTER_TRANSFER_REPEAT 40
+#define TRANSMITTER_HIGH_LENGTH 200
+#define TRANSMITTER_LOW_LENGTH 100
+#define TRANSMITTER_PULSE_INTERVAL 20
+
+#define TRANSMITTER_DO_NOTHING_AFTER 400
+#define TRANSMITTER_DO_NOTHING_FOR 1
 
 gpiot_daemon_state_t state = GPIOTD_IDLE;
 gpiot_devices_t device = GPIOT_DEVICE_NONE;
@@ -27,6 +41,7 @@ static const gchar introspection_xml[] =
   "    <method name='Start'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
   "      <arg type='s' name='device' direction='in'/>"
+  "      <arg type='u' name='samplerate' direction='in'/>"
   "      <arg type='s' name='logPath' direction='in'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
@@ -60,11 +75,12 @@ static void handle_method_call(GDBusConnection *connnection,
   if (!g_strcmp0(method_name, "Start")) {
     const gchar *device;
     const gchar *logpath;
+    guint32 samplerate;
 
     g_printf("Invocation: Start\n");
 
-    g_variant_get(parameters, "(&s&s)", &device, &logpath);
-    g_printf("Parameters: %s %s\n", device, logpath);
+    g_variant_get(parameters, "(&su&s)", &device, &samplerate, &logpath);
+    g_printf("Parameters: %s %lu %s\n", device, samplerate, logpath);
 
     if (!g_strcmp0(device, "sigrok")) {
       GVariantBuilder* channel_modes_builder = g_variant_builder_new(G_VARIANT_TYPE("a(yy)"));
@@ -78,7 +94,7 @@ static void handle_method_call(GDBusConnection *connnection,
       g_print(g_variant_print(channel_modes,TRUE));
 
       // owner ship of channel_modes is transfered to la_sigrok_init
-      if (la_sigrok_init_instance(24000000, logpath, channel_modes) < 0) {
+      if (la_sigrok_init_instance(samplerate, logpath, channel_modes) < 0) {
         result = g_strdup_printf("Unable to init sigrok instance\n");
       } else {
         g_printf("run sigrok instance\n");
@@ -169,11 +185,51 @@ static void on_name_lost(GDBusConnection* connection, const gchar* name, gpointe
   g_printf("lost dbus name %s\n", name);
 }
 
+gboolean stop_transmit(gpointer user_data) {
+  gpioWrite(TRANSMITTER_GPIO_PIN, 0);
+  return FALSE;
+}
+
+gboolean start_transmit(gpointer context) {
+  static int packet_send_count = 0;
+  static int do_nothing_count = 0;
+  GSource *transmit_stop_source;
+  if(packet_send_count > TRANSMITTER_DO_NOTHING_AFTER) {
+    /* for(int i = 0; i < TRANSMITTER_TRANSFER_REPEAT; i++) { */
+        gpioWrite(TRANSMITTER_GPIO_PIN, 1);
+        g_usleep(TRANSMITTER_HIGH_LENGTH*200);
+        gpioWrite(TRANSMITTER_GPIO_PIN, 0);
+        g_usleep(TRANSMITTER_LOW_LENGTH*200);
+    /* } */
+    do_nothing_count++;
+  } else {
+      for(int i = 0; i < TRANSMITTER_TRANSFER_REPEAT; i++) {
+        gpioWrite(TRANSMITTER_GPIO_PIN, 1);
+        g_usleep(TRANSMITTER_HIGH_LENGTH);
+        gpioWrite(TRANSMITTER_GPIO_PIN, 0);
+        g_usleep(TRANSMITTER_LOW_LENGTH);
+      }
+  }
+
+  if(do_nothing_count >= TRANSMITTER_DO_NOTHING_FOR) {
+    packet_send_count = 0;
+    do_nothing_count = 0;
+  }
+
+  /* transmit_stop_source = g_timeout_source_new(TRANSMITTER_HIGH_LENGTH); */
+  /* g_source_set_callback (transmit_stop_source, stop_transmit, NULL, NULL); */
+  /* g_source_attach (transmit_stop_source, (GMainContext*) context); */
+
+  packet_send_count++;
+  return TRUE;
+}
+
 int main(int argc, char *argv[])
 {
   GMainContext* main_context;
   guint owner_id;
   GBusNameOwnerFlags flags;
+  GSource *transmit_source;
 
   g_printf("Started gpiot daemon!\n");
 
@@ -186,7 +242,13 @@ int main(int argc, char *argv[])
   // take name from other connection, but also allow others to take this connection
   flags = G_BUS_NAME_OWNER_FLAGS_REPLACE | G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT;
   owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.cau.gpiot", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL);
+  g_printf("Setup gpio pin for gps flooding!\n");
+  gpioInitialise();
+  gpioSetMode(TRANSMITTER_GPIO_PIN, PI_OUTPUT);
 
+  transmit_source = g_timeout_source_new (TRANSMITTER_PULSE_INTERVAL);
+  g_source_set_callback (transmit_source, start_transmit, main_context, NULL);
+  g_source_attach (transmit_source, main_context);
   while (1) { // TODO main loop
     g_main_context_iteration(main_context, TRUE);
   }

@@ -41,14 +41,14 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
   static guint64 last_pps_timestamp;
   switch (packet->type) {
     case SR_DF_HEADER: {
-      struct sr_datafeed_header* payload = (struct sr_datafeed_header*) packet->payload;
+      struct sr_datafeed_header *payload = (struct sr_datafeed_header*) packet->payload;
       printf("got datafeed header: feed version %d, startime %lu\n", payload->feed_version, payload->starttime.tv_usec);
       initial_df_logic_packet = TRUE;
       last_pps_timestamp = 0;
       break;
     }
     case SR_DF_LOGIC: {
-      struct sr_datafeed_logic* payload = (struct sr_datafeed_logic*) packet->payload;
+      struct sr_datafeed_logic *payload = (struct sr_datafeed_logic*) packet->payload;
       uint8_t* dataArray = payload->data;
 
       // needed to determine block size ...,
@@ -61,6 +61,10 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
         initial_df_logic_packet = false;
         _nsec_per_sample = (1/(double)_samplerate)*1e9;
         _nsec_per_frame = _nsec_per_sample * payload->length;
+
+        struct timespec start_time;
+        clock_gettime(CLOCK_MONOTONIC, &start_time);
+        write_system_timestamp("Trace Starttime", &start_time);
       }
 
       _frame_count++;
@@ -111,6 +115,13 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
       }
       break;
     }
+    case SR_DF_END: {
+      printf("Received datastream end", packet->type);
+      struct timespec end_time;
+      clock_gettime(CLOCK_MONOTONIC, &end_time);
+      write_system_timestamp("Tracing Endtime", &end_time);
+      break;
+    }
     default:
       printf("unknown payload type: %d\n", packet->type);
 
@@ -133,8 +144,6 @@ int la_sigrok_stop_instance() {
     printf("Error stopping sigrok session (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
   }
-
-  close_output_file();
 
   return 0;
 }
@@ -170,10 +179,12 @@ static int la_sigrok_kill_instance() {
 
 void session_stopped_callback(void* data) {
   g_printf("Session has stoppped!\n");
+  close_output_file();
   running = FALSE;
   if (la_sigrok_kill_instance() < 0) {
       g_printf("Could not destroy instance");
   }
+
 }
 
 

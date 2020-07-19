@@ -17,13 +17,15 @@ static gboolean start = FALSE;
 static gboolean stop = FALSE;
 static gchar* logpath = NULL;
 static gchar* device = NULL;
+static guint32 samplerate = 8000000;
 
 
 static const GOptionEntry entries[] = {
-  {"start",   's', 0, G_OPTION_ARG_NONE,     &start   , "Tell daemon to start gpio tracing",                 NULL},
-  {"stop",    'k', 0, G_OPTION_ARG_NONE,     &stop    , "Tell daemon to start gpio tracing",                 NULL},
-  {"logpath", 'l', 0, G_OPTION_ARG_FILENAME, &logpath , "path where the trace logs should be stored ",       NULL},
-  {"device",  'd', 0, G_OPTION_ARG_STRING,   &device  , "device which should start tracing {sigrok/pigpio}", NULL},
+  {"start",      's'    , 0, G_OPTION_ARG_NONE,     &start      , "Tell daemon to start gpio tracing",                 NULL},
+  {"stop",       'k'    , 0, G_OPTION_ARG_NONE,     &stop       , "Tell daemon to start gpio tracing",                 NULL},
+  {"logpath",    'l'    , 0, G_OPTION_ARG_FILENAME, &logpath    , "path where the trace logs should be stored ",       NULL},
+  {"samplerate", 'r'    , 0, G_OPTION_ARG_INT,      &samplerate , "rate with which the device should sample",          NULL},
+  {"device",     'd'    , 0, G_OPTION_ARG_STRING,   &device     , "device which should start tracing {sigrok/pigpio}", NULL},
   { NULL }
 };
 
@@ -104,7 +106,7 @@ static void on_name_appeared(GDBusConnection *connection, const gchar *name,
     } else {
       _logpath = "/tmp/gpio-default-log.csv"; // TODO don't output if no logpath is passed
     }
-    parameters = g_variant_new("(ss)", _device, _logpath);
+    parameters = g_variant_new("(sus)", _device, samplerate,  _logpath); // TODO use _ prefix for 'globals'
   } else if(stop) {
     method = "Stop";
     if(device == NULL) {

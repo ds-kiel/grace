@@ -11,8 +11,6 @@ static FILE *fp;
 static size_t buf_index = 0;
 timestamp_t* write_buffer;
 
-// TODO add semaphore synchronisation
-
 //" TODO complete output # timestamp,observer_id,node_id,pin_name,value\n" +
 
 // should return -1 if failed
@@ -52,6 +50,10 @@ int close_output_file() {
   return 0;
 }
 
+int write_system_timestamp(char *event_name, struct timespec *timestamp) {
+  flush_buffer_to_log(); // hack, write this data at some seperate section. For example header.
+  fprintf(fp, "%s,%" PRIu64 "\n", event_name, ((guint64)timestamp->tv_sec*1e9)+ (guint64) timestamp->tv_nsec);
+}
 
 // TODO maybe memory manage timestamps in timestamp.h and only
 int write_sample(timestamp_t sample) {
