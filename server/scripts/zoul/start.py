@@ -11,7 +11,7 @@ from psshlib import *
 
 REMOTE_LOGS_PATH = "/home/user/logs"
 REMOTE_SCRIPTS_PATH = "/home/user/scripts"
-REMOTE_GPIO_CLIENT_PATH = "/home/user/gpio-tracer" # TODO install on system and call by $PATH
+REMOTE_GPIO_APP_PATH = "/usr/testbed/gpio-tracer"
 REMOTE_ZOUL_SCRIPTS_PATH = os.path.join(REMOTE_SCRIPTS_PATH, "zoul")
 REMOTE_TMP_PATH = "/home/user/tmp"
 REMOTE_FIRMWARE_PATH = os.path.join(REMOTE_TMP_PATH, "firmware.bin")
@@ -80,6 +80,7 @@ if __name__=="__main__":
     if pssh(hosts_path, "%s %s"%(os.path.join(REMOTE_ZOUL_SCRIPTS_PATH, "serialdump.sh"), remote_log_dir), "Starting serialdump") != 0:
       sys.exit(6)
   else:
-    if pssh(hosts_path, "%s --start"%(os.path.join(REMOTE_GPIO_PATH "build/src/gpiotc" ) "Start GPIO tracing") != 0: # TODO --start zoul --channels 12
+    remote_log_dir = os.path.join(REMOTE_LOGS_PATH, os.path.basename(job_dir), "gpio-traces.csv")
+    if pssh(hosts_path, "%s --start --device=sigrok --logpath=%s"%(os.path.join(REMOTE_GPIO_APP_PATH "gpiotc"), remote_log_dir), "Start GPIO tracing") != 0:
       sys.exit(7)
 
