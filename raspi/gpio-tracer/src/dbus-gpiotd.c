@@ -23,7 +23,7 @@ static GDBusNodeInfo* introspection_data = NULL;
 /* Introspection data for the service we are exporting */
 static const gchar introspection_xml[] =
   "<node>"
-  "  <interface name='org.cau.gpiot.ControlInterface'>"
+  "  <interface name='org.cau.gpiot.ControllerInterface'>"
   "    <annotation name='org.cau.gpiot.Annotation' value='OnInterface'/>"
   "    <annotation name='org.cau.gpiot.Annotation' value='AlsoOnInterface'/>"
   "    <method name='Start'>"

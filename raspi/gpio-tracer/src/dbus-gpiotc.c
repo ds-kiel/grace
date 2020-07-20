@@ -38,7 +38,7 @@ static const gchar* daemon_call_control_interface_method(GDBusConnection *connec
                                                          const gchar* method,
                                                          GVariant* parameters,
                                                          GError **error) {
-  g_printf("trying run start\n");
+  g_printf("trying run %s\n", method);
   GDBusMessage *method_call_message;
   GDBusMessage *method_reply_message;
 

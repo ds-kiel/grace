@@ -41,13 +41,17 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                                             void *cb_data) {
   static gboolean initial_df_logic_packet = TRUE;
   static uint8_t last;
-  static guint64 last_pps_timestamp;
+  static guint64 last_transmitter_timestamp;
+  static guint64 first_sync_timestamp;
+  static guint8 sync_pulse_count;
+
   switch (packet->type) {
     case SR_DF_HEADER: {
       struct sr_datafeed_header *payload = (struct sr_datafeed_header*) packet->payload;
       printf("got datafeed header: feed version %d, startime %lu\n", payload->feed_version, payload->starttime.tv_usec);
       initial_df_logic_packet = TRUE;
-      last_pps_timestamp = 0;
+      last_transmitter_timestamp = 0;
+      sync_pulse_count = 0;
       break;
     }
     case SR_DF_LOGIC: {
@@ -60,6 +64,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
       if(initial_df_logic_packet) {
         _frame_count = 0;
         _sample_count = 0;
+        sync_pulse_count = 0;
         last = dataArray[0]&_active_channel_mask;
         initial_df_logic_packet = false;
         _nsec_per_sample = (1/(double)_samplerate)*1e9;
@@ -84,21 +89,32 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
               // Filter pps signal
               if(k == _pps_channel) {
                 /* g_printf("PPS Signal\n"); */
-                if(delta < 1) { // Rising signal save timestamp
-                  last_pps_timestamp = timestamp_from_samples(_frame_count, _sample_count);
-                } else { // Falling signal
-                  if(last_pps_timestamp > 0) { // atleast one rising signal had to previously happen
-                    guint64 current_pps_timestamp;
+                if(delta < 1) { // Rising signal -> save timestamp
+                  last_transmitter_timestamp = timestamp_from_samples(_frame_count, _sample_count);
+                } else { // Falling signal -> check length of pulse
+                  if(last_transmitter_timestamp > 0) { // atleast one rising signal had to previously happen
+                    guint64 current_transmitter_timestamp;
                     guint64 difference;
 
-                    current_pps_timestamp = timestamp_from_samples(_frame_count, _sample_count);
-                    difference = current_pps_timestamp - last_pps_timestamp;
+                    current_transmitter_timestamp = timestamp_from_samples(_frame_count, _sample_count);
+                    difference = current_transmitter_timestamp - last_transmitter_timestamp;
                     if (difference > TRANSMITTER_SYNC_LENGTH/TRANSMITTER_SYNC_LENGTH_TOLERANCE
                         && difference < TRANSMITTER_SYNC_LENGTH*TRANSMITTER_SYNC_LENGTH_TOLERANCE) {
-                      printf("Got Start Package start recording samples now! difference: %" PRIu64 "\n", difference);
-                      timestamp_t data = {.channel = _pps_channel, .state = 1, .time = last_pps_timestamp};
-                      write_sample(data);
-                      store_samples = TRUE;
+
+                      if(sync_pulse_count <= 0)
+                        first_sync_timestamp = current_transmitter_timestamp;
+
+                      sync_pulse_count++;
+                      g_printf("Got %dnth sync pulse\n", sync_pulse_count);
+
+                      if(sync_pulse_count >= TRANSMITTER_SYNC_PULSES) {
+                        g_printf("Got enough sync Packages start recording samples now! difference: %" PRIu64 "\n", difference);
+                        timestamp_t data = {.channel = _pps_channel, .state = 1, .time = first_sync_timestamp};
+                        write_sample(data);
+                        store_samples = TRUE;
+                      }
+                    } else {
+                      sync_pulse_count = 0;
                     }
                   }
                 }

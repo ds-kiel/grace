@@ -2,12 +2,27 @@
 See [stackoverflow](https://serverfault.com/questions/892465/starting-systemd-services-sharing-a-session-d-bus-on-headless-system)
 
 # Dependencies
+## general dependencies
 - `pigpio`
 - `libsigrok`
 - `glib`
 - `python3`
-- `python-flask-restful`
-- `python-dbus`
+
+### Installation on Raspbian
+```
+  apt update
+  apt install pigpio libsigrok-dev libglib2.0-dev python3
+```
+
+## Python dependencies:
+- `flask-restful`
+- `dbus-python`
+
+### Installation on Raspbian
+```
+  pip3 install flask-restful dbus-python
+```
+
 
 # Installation - System bus
 `/ssh:user@raspiot|sudo:root@raspiot:/usr/share/dbus-1/system-services/org.cau.gpiot.service`
