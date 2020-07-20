@@ -94,21 +94,22 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                 } else { // Falling signal -> check length of pulse
                   if(last_transmitter_timestamp > 0) { // atleast one rising signal had to previously happen
                     guint64 current_transmitter_timestamp;
-                    guint64 difference;
+                    guint64 difference_in_microseconds;
 
                     current_transmitter_timestamp = timestamp_from_samples(_frame_count, _sample_count);
-                    difference = current_transmitter_timestamp - last_transmitter_timestamp;
-                    if (difference > TRANSMITTER_SYNC_LENGTH/TRANSMITTER_SYNC_LENGTH_TOLERANCE
-                        && difference < TRANSMITTER_SYNC_LENGTH*TRANSMITTER_SYNC_LENGTH_TOLERANCE) {
+                    difference_in_microseconds = (current_transmitter_timestamp - last_transmitter_timestamp)/1e3;
+                    if (difference_in_microseconds > TRANSMITTER_SYNC_LENGTH/TRANSMITTER_SYNC_LENGTH_TOLERANCE
+                        && difference_in_microseconds < TRANSMITTER_SYNC_LENGTH*TRANSMITTER_SYNC_LENGTH_TOLERANCE) {
 
                       if(sync_pulse_count <= 0)
                         first_sync_timestamp = current_transmitter_timestamp;
 
                       sync_pulse_count++;
-                      g_printf("Got %dnth sync pulse\n", sync_pulse_count);
+                      g_printf("Got %dnth sync pulse, difference_in_microseconds: %" PRIu64 "\n", sync_pulse_count, difference_in_microseconds);
 
                       if(sync_pulse_count >= TRANSMITTER_SYNC_PULSES) {
-                        g_printf("Got enough sync Packages start recording samples now! difference: %" PRIu64 "\n", difference);
+                        g_printf("Got enough sync Packages start recording samples now!\n");
+                        sync_pulse_count = 0;
                         timestamp_t data = {.channel = _pps_channel, .state = 1, .time = first_sync_timestamp};
                         write_sample(data);
                         store_samples = TRUE;

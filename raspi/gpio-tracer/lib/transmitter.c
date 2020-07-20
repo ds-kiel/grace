@@ -8,6 +8,11 @@
 // returns the nanosecond timestamp at which the pulse was transmitted
 guint64 transmitter_send_pulse()
 {
+  if (gpioInitialise() < 0)
+    return 0;
+
+  gpioSetMode(TRANSMITTER_GPIO_PIN, PI_OUTPUT);
+
   for(int i = 0; i < TRANSMITTER_WARMUP_TRANSFER_PULSES; i++) {
     gpioWrite(TRANSMITTER_GPIO_PIN, 1);
     g_usleep(TRANSMITTER_WARMUP_HIGH_LENGTH);
