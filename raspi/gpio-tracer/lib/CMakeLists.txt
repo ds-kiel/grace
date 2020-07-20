@@ -12,8 +12,9 @@ find_path(PIGPIO_INCLUDE_DIR
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-
 add_library(analyzer collection/la_pigpio.c collection/la_sigrok.c output.c timestamp.c)
+
+add_library(transmitter SHARED transmitter.c)
 
 target_include_directories(analyzer
   PUBLIC ${LIBSIGROK_INCLUDE_DIRS}
@@ -26,3 +27,13 @@ target_link_libraries(analyzer
   ${PIGPIO_LIBRARY}
   Threads::Threads
   )
+
+target_include_directories(transmitter
+  PUBLIC ${PIGPIO_INCLUDE_DIR}
+  PUBLIC ${GLIB_INCLUDE_DIRS}
+  PUBLIC "${PROJECT_SOURCE_DIR}/include"
+  )
+
+target_link_libraries(transmitter
+  ${GLIB_LIBRARIES}
+  ${PIGPIO_LIBRARY})

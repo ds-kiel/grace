@@ -2,6 +2,7 @@
 
 #include <output.h>
 #include <types.h>
+#include <transmitter.h>
 
 #include <libsigrok/libsigrok.h>
 #include <glib/gprintf.h>
@@ -10,6 +11,8 @@
 #include <stdbool.h>
 
 static const guint8 _pps_channel = 1; // CH2 is used for the pps signal
+
+static gboolean store_samples = FALSE;
 
 static gboolean running = FALSE;
 
@@ -90,22 +93,26 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
 
                     current_pps_timestamp = timestamp_from_samples(_frame_count, _sample_count);
                     difference = current_pps_timestamp - last_pps_timestamp;
-                    if (difference > PPS_PULSE_LENGTH-PPS_PULSE_TOLERANCE && difference < PPS_PULSE_LENGTH + PPS_PULSE_TOLERANCE) {
-                      printf("difference: %" PRIu64 "\n", difference);
+                    if (difference > TRANSMITTER_SYNC_LENGTH/TRANSMITTER_SYNC_LENGTH_TOLERANCE
+                        && difference < TRANSMITTER_SYNC_LENGTH*TRANSMITTER_SYNC_LENGTH_TOLERANCE) {
+                      printf("Got Start Package start recording samples now! difference: %" PRIu64 "\n", difference);
                       timestamp_t data = {.channel = _pps_channel, .state = 1, .time = last_pps_timestamp};
                       write_sample(data);
+                      store_samples = TRUE;
                     }
                   }
                 }
               } else {
-                printf("Some channel changed state \n");
+                g_printf("Some channel changed state \n");
                 if((_channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
-                state = 0;
-              } else if (_channels[k].mode & MATCH_RISING){  // rising signal
-                state = 1;
-              }
-              timestamp_t data = {.channel = _channels[k].channel, .state = state, .time = timestamp_from_samples(_frame_count, _sample_count)};
-              write_sample(data);
+                  state = 0;
+                } else if (_channels[k].mode & MATCH_RISING){  // rising signal
+                  state = 1;
+                }
+                if (store_samples) {
+                  timestamp_t data = {.channel = _channels[k].channel, .state = state, .time = timestamp_from_samples(_frame_count, _sample_count)};
+                  write_sample(data);
+                }
               }
             }
           }
@@ -116,18 +123,14 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
       break;
     }
     case SR_DF_END: {
-      printf("Received datastream end", packet->type);
+      g_printf("datastream from device ended\n");
       struct timespec end_time;
       clock_gettime(CLOCK_MONOTONIC, &end_time);
       write_system_timestamp("Tracing Endtime", &end_time);
       break;
     }
     default:
-      printf("unknown payload type: %d\n", packet->type);
-
-      // TODO undeterministically the stream ends with SR_DF_END
-      //      a new context should be started in this case as a workaround for now
-      // TODO determine wether this also happens with the original logic analyzers
+      printf("unhandled payload type: %d\n", packet->type);
       break;
   }
 }
@@ -323,7 +326,7 @@ int la_sigrok_init_instance(guint32 samplerate, const gchar* logpath, GVariant* 
         return -1;
       }
       _samplerate = samplerate;
-      printf("successfully set sample rate to %" PRIu64 "\n", _samplerate);
+      printf("successfully set sample rate to %" PRIu32 "\n", _samplerate);
     }
   }
   g_array_free(fx2ladw_dvc_opts, TRUE);

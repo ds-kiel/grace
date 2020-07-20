@@ -2,8 +2,6 @@
 
 #include "gpiot.h"
 
-#include <transmitter.h>
-
 #include <la_sigrok.h>
 #include <la_pigpio.h>
 #include <types.h>
@@ -15,9 +13,7 @@
 #include <glib.h>
 #include <glib/gprintf.h>
 #include <unistd.h>
-#include <pigpio.h>
 
-#define TRANSMITTER_GPIO_PIN 23
 
 gpiot_daemon_state_t state = GPIOTD_IDLE;
 gpiot_devices_t device = GPIOT_DEVICE_NONE;
@@ -189,36 +185,11 @@ static void on_name_lost(GDBusConnection* connection, const gchar* name, gpointe
   g_printf("lost dbus name %s\n", name);
 }
 
-gboolean send_sync_pulse() {
-  gpioWrite(TRANSMITTER_GPIO_PIN, 1);
-  g_usleep(TRANSMITTER_HIGH_LENGTH*200);
-  gpioWrite(TRANSMITTER_GPIO_PIN, 0);
-  g_usleep(TRANSMITTER_LOW_LENGTH*200);
-}
-
-gboolean start_transmit(gpointer context) {
-  GSource *transmit_stop_source;
-
-  for(int i = 0; i < TRANSMITTER_TRANSFER_REPEAT; i++) {
-    gpioWrite(TRANSMITTER_GPIO_PIN, 1);
-    g_usleep(TRANSMITTER_HIGH_LENGTH);
-    gpioWrite(TRANSMITTER_GPIO_PIN, 0);
-    g_usleep(TRANSMITTER_LOW_LENGTH);
-  }
-
-  /* transmit_stop_source = g_timeout_source_new(TRANSMITTER_HIGH_LENGTH); */
-  /* g_source_set_callback (transmit_stop_source, stop_transmit, NULL, NULL); */
-  /* g_source_attach (transmit_stop_source, (GMainContext*) context); */
-
-  return TRUE;
-}
-
 int main(int argc, char *argv[])
 {
   GMainContext* main_context;
   guint owner_id;
   GBusNameOwnerFlags flags;
-  GSource *transmit_source;
 
   g_printf("Started gpiot daemon!\n");
 
@@ -232,12 +203,7 @@ int main(int argc, char *argv[])
   flags = G_BUS_NAME_OWNER_FLAGS_REPLACE | G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT;
   owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.cau.gpiot", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL);
   g_printf("Setup gpio pin for gps flooding!\n");
-  gpioInitialise();
-  gpioSetMode(TRANSMITTER_GPIO_PIN, PI_OUTPUT);
 
-  transmit_source = g_timeout_source_new (TRANSMITTER_PULSE_INTERVAL);
-  g_source_set_callback (transmit_source, start_transmit, main_context, NULL);
-  g_source_attach (transmit_source, main_context);
   while (1) { // TODO main loop
     g_main_context_iteration(main_context, TRUE);
   }
