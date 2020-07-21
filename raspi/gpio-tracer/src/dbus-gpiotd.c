@@ -3,7 +3,6 @@
 #include "gpiot.h"
 
 #include <la_sigrok.h>
-#include <la_pigpio.h>
 #include <types.h>
 #include <inttypes.h>
 
@@ -102,13 +101,7 @@ static void handle_method_call(GDBusConnection *connnection,
         }
       }
     } else if (!g_strcmp0(device, "pigpio")) {
-      if(la_pigpio_init_instance(logpath) < 0) {
-        result = g_strdup_printf("Unable to create pigpio instance");
-      } else {
-        la_pigpio_run_instance(); // TODO implement error checking when needed
-        state = GPIOTD_COLLECTING;
-        result = g_strdup_printf("Started collecting on device %s", device);
-      }
+        result = g_strdup_printf("pigpio not implemented anymore!");
     } else {
       result = g_strdup_printf("Device %s not known!", device);
     }
@@ -126,7 +119,7 @@ static void handle_method_call(GDBusConnection *connnection,
 
     if (state == GPIOTD_COLLECTING) { // TODO track what device exactly is collecting!
       if (!g_strcmp0(device, "pigpio")) {
-        la_pigpio_stop_instance();
+        result = g_strdup_printf("pigpio not implemented anymore!");
       } else if (!g_strcmp0(device, "sigrok")) {
         la_sigrok_stop_instance(wait_sync);
       }
