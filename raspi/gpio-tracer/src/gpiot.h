@@ -11,6 +11,10 @@
 /* |       5 |    -     |              5 | */
 /* --------------------------------------- */
 
+/* typedef enum return_code { */
+/*   LA_SUCCESS = 0, */
+/*   LA_ERROR = -1, */
+/* } */
 
 typedef enum gpiot_devices {
   GPIOT_DEVICE_NONE,
@@ -19,8 +23,9 @@ typedef enum gpiot_devices {
 } gpiot_devices_t;
 
 typedef enum gpiot_daemon_state {
-  GPIOTD_IDLE,
-  GPIOTD_COLLECTING,
+  GPIOTD_IDLE = 1,
+  GPIOTD_COLLECTING = 2,
+  GPIOTD_PENDING_SYNC = 3,
 } gpiot_daemon_state_t;
 
 #endif /* GPIOT_H */

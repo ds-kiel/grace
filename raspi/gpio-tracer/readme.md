@@ -17,10 +17,11 @@ See [stackoverflow](https://serverfault.com/questions/892465/starting-systemd-se
 ## Python dependencies:
 - `flask-restful`
 - `dbus-python`
+- `requests`
 
 ### Installation on Raspbian
 ```
-  pip3 install flask-restful dbus-python
+  pip3 install flask-restful dbus-python requests
 ```
 
 

@@ -40,9 +40,9 @@ static const gchar introspection_xml[] =
   "      <arg type='b' name='waitForSync' direction='in'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
-  "    <method name='syncArrived'>"
+  "    <method name='getState'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
-  "      <arg type='b' name='result' direction='out'/>"
+  "      <arg type='i' name='result' direction='out'/>"
   "    </method>"
   "    <signal name='Something'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='Onsignal'/>"
@@ -131,15 +131,16 @@ static void handle_method_call(GDBusConnection *connnection,
         la_sigrok_stop_instance(wait_sync);
       }
       state = GPIOTD_IDLE;
-      result = g_strdup_printf("Successfully stopped for device %s", device);
+      result = g_strdup_printf("Stopped collecting on device %s", device);
     } else {
       result = g_strdup_printf("No instance running for %s", device);
     }
-
     g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
+  } else if (!g_strcmp0(method_name, "getState")) {
+    gpiot_daemon_state_t _state = state;
+    if(state == GPIOTD_COLLECTING && !la_sigrok_get_sync_state()) _state = GPIOTD_PENDING_SYNC; // TODO spaghetti code. Handle some other way
 
-  } else if (!g_strcmp0(method_name, "syncArrived")) { // TODO This should be some kind of Maybe value. If wait_sync == FALSE this function doesn't make sense
-    g_dbus_method_invocation_return_value(invocation, g_variant_new("(b)", !la_sigrok_get_sync_state()));
+    g_dbus_method_invocation_return_value(invocation, g_variant_new("(i)", state));
   }
 
 

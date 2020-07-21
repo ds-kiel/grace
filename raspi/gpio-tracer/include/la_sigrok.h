@@ -19,7 +19,8 @@ enum action {
 int la_sigrok_init_instance(guint32 samplerate, const gchar* logpath, GVariant* channel_modes);
 int la_sigrok_run_instance(gboolean wait_sync);
 int la_sigrok_stop_instance(gboolean wait_sync);
-gboolean la_sigrok_get_sync_state(); // returns TRUE if device is collecting samples, FALSE otherwise
+// TODO rename to something more meaninfull
+gboolean la_sigrok_get_sync_state(); // returns TRUE if device is waiting for a sync pulse
 
 static int la_sigrok_do_stop_instance();
 
