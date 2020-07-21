@@ -31,24 +31,18 @@ static const gchar introspection_xml[] =
   "      <arg type='s' name='device' direction='in'/>"
   "      <arg type='u' name='samplerate' direction='in'/>"
   "      <arg type='s' name='logPath' direction='in'/>"
+  "      <arg type='b' name='waitForSync' direction='in'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
   "    <method name='Stop'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
   "      <arg type='s' name='device' direction='in'/>"
+  "      <arg type='b' name='waitForSync' direction='in'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
-  "    <method name='AnnounceStart'>"
+  "    <method name='syncArrived'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
-  "      <arg type='s' name='result' direction='out'/>"
-  "    </method>"
-  "    <method name='AnnounceStop'>"
-  "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
-  "      <arg type='s' name='result' direction='out'/>"
-  "    </method>"
-  "    <method name='CheckState'>" // used to check whether the sync start/stop package arrived
-  "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
-  "      <arg type='s' name='result' direction='out'/>"
+  "      <arg type='b' name='result' direction='out'/>"
   "    </method>"
   "    <signal name='Something'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='Onsignal'/>"
@@ -76,11 +70,12 @@ static void handle_method_call(GDBusConnection *connnection,
     const gchar *device;
     const gchar *logpath;
     guint32 samplerate;
+    gboolean wait_sync;
 
     g_printf("Invocation: Start\n");
 
-    g_variant_get(parameters, "(&su&s)", &device, &samplerate, &logpath);
-    g_printf("Parameters: %s %" PRIu32 "%s\n", device, samplerate, logpath);
+    g_variant_get(parameters, "(&su&sb)", &device, &samplerate, &logpath, &wait_sync);
+    g_printf("Parameters: %s %" PRIu32 " %s %c\n", device, samplerate, logpath, wait_sync);
 
     if (!g_strcmp0(device, "sigrok")) {
       GVariantBuilder* channel_modes_builder = g_variant_builder_new(G_VARIANT_TYPE("a(yy)"));
@@ -99,7 +94,7 @@ static void handle_method_call(GDBusConnection *connnection,
       } else {
         g_printf("run sigrok instance\n");
 
-        if (la_sigrok_run_instance() < 0) {
+        if (la_sigrok_run_instance(wait_sync) < 0) {
           result = g_strdup_printf("Unable to run sigrok instance %s!", device);
         } else {
           result = g_strdup_printf("Started collecting on device %s", device);
@@ -118,28 +113,36 @@ static void handle_method_call(GDBusConnection *connnection,
       result = g_strdup_printf("Device %s not known!", device);
     }
 
+    g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
+
   } else if (!g_strcmp0(method_name, "Stop")) {
     const gchar *device;
+    gboolean wait_sync;
 
     g_printf("Invocation: Stop\n");
 
-    g_variant_get(parameters, "(&s)", &device);
-    g_printf("got: %s\n", device);
+    g_variant_get(parameters, "(&sb)", &device, &wait_sync);
+    g_printf("got: %s %c\n", device, wait_sync);
 
     if (state == GPIOTD_COLLECTING) { // TODO track what device exactly is collecting!
       if (!g_strcmp0(device, "pigpio")) {
         la_pigpio_stop_instance();
       } else if (!g_strcmp0(device, "sigrok")) {
-        la_sigrok_stop_instance();
+        la_sigrok_stop_instance(wait_sync);
       }
       state = GPIOTD_IDLE;
       result = g_strdup_printf("Successfully stopped for device %s", device);
     } else {
       result = g_strdup_printf("No instance running for %s", device);
     }
+
+    g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
+
+  } else if (!g_strcmp0(method_name, "syncArrived")) { // TODO This should be some kind of Maybe value. If wait_sync == FALSE this function doesn't make sense
+    g_dbus_method_invocation_return_value(invocation, g_variant_new("(b)", !la_sigrok_get_sync_state()));
   }
 
-  g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
+
 }
 
 static GVariant *handle_get_property(GDBusConnection *connection,

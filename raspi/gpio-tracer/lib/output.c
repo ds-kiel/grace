@@ -51,7 +51,12 @@ int close_output_file() {
 
 int write_system_timestamp(char *event_name, struct timespec *timestamp) {
   flush_buffer_to_log(); // hack, write this data at some seperate section. For example header.
-  fprintf(fp, "%s,%" PRIu64 "\n", event_name, ((guint64)timestamp->tv_sec*1e9)+ (guint64) timestamp->tv_nsec);
+  fprintf(fp, "%s,%" PRIu64 "\n", event_name, ((guint64)timestamp->tv_sec*(guint64)1e9) + (guint64) timestamp->tv_nsec);
+}
+
+int write_comment(char *comment) {
+  flush_buffer_to_log(); // hack, write this data at some seperate section. For example header.
+  fprintf(fp, "# %s \n", comment);
 }
 
 // TODO maybe memory manage timestamps in timestamp.h and only
