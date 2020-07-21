@@ -11,8 +11,7 @@ find_path(PIGPIO_INCLUDE_DIR
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-add_library(analyzer collection/la_pigpio.c collection/la_sigrok.c output.c timestamp.c)
-
+add_library(analyzer collection/la_sigrok.c output.c timestamp.c)
 add_library(transmitter SHARED transmitter.c)
 
 target_include_directories(analyzer
