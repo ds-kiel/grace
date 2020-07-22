@@ -133,7 +133,7 @@ static void handle_method_call(GDBusConnection *connnection,
     gpiot_daemon_state_t _state = state;
     if(state == GPIOTD_COLLECTING && !la_sigrok_get_sync_state()) _state = GPIOTD_PENDING_SYNC; // TODO spaghetti code. Handle some other way
 
-    g_dbus_method_invocation_return_value(invocation, g_variant_new("(i)", state));
+    g_dbus_method_invocation_return_value(invocation, g_variant_new("(i)", _state));
   }
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 apt update
 apt install pigpio libglib2.0-dev python3
-apt install libftdi1-dev libzip-dev libserialport-dev pigpio python3 python3-pip sdcc
+apt install libftdi1-dev libzip-dev libserialport-dev python3-pip sdcc
 pip3 install flask-restful dbus-python requests
 
 cp systemd/dbus-org.cau.gpiot.service /etc/systemd/system/
