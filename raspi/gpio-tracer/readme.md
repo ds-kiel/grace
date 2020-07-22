@@ -31,8 +31,19 @@ See [stackoverflow](https://serverfault.com/questions/892465/starting-systemd-se
 
 ```
     cp systemd/dbus-org.cau.gpiot.service /etc/systemd/system/
+    cp systemd/collector-rest-server.service /etc/systemd/system/
+    cp systemd/sync-node-rest-server.service /etc/systemd/system/
     cp systemd/org.cau.gpiot.service /usr/share/dbus-1/system-services/
     cp systemd/gpiot.conf /etc/dbus-1/system.d/
+```
+
+# Note - Installation on rasbian stretch
+Raspbian stretch still packages an old version of libsigrok. A new version has to be build on the target system
+and be included with the binary. The fx2lafw firmware also has to be build an installed.
+```
+  sudo apt install libftdi1-dev libzip-dev libserialport-dev pigpio python3 python3-pip sdcc
+
+  sudo pip3 install flask-restful dbus-python requests
 ```
 
 # Running

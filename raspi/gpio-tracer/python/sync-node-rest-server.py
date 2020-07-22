@@ -1,6 +1,7 @@
 import os,sys
 import threading
 import time
+import pathlib,posixpath
 
 from flask import Flask
 from flask_restful import Resource, Api
@@ -10,8 +11,8 @@ from ctypes import *
 from enum import Enum
 
 # Use FFI because we don't want to deal with pythons garbage collector
-transmitter_so_file = os.path.abspath(sys.argv[0] + "/../../build/lib/libtransmitter.so")
-transmitter_functions = CDLL(transmitter_so_file)
+transmitter_so_file = pathlib.PurePath.joinpath( pathlib.Path(__file__).parent.absolute(), "../libtransmitter.so")
+transmitter_functions = CDLL(str(transmitter_so_file))
 transmitter_functions.transmitter_send_pulse.restype = c_ulonglong
 
 app = Flask(__name__)
@@ -32,7 +33,7 @@ class Action(Enum):
 
 # TODO read from file
 # TODO handle 404, no route to host etc.
-nodes = ["192.168.1.113", "192.168.1.109"]
+nodes = ["192.168.87.230"]
 collector_node_states = {}
 collector_node_start_timestamp = {}
 collector_node_stop_timestamp = {}
