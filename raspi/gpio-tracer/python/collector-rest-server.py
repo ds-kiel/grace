@@ -31,8 +31,8 @@ class CollectorState(Resource):
 class Logs(Resource):
     def get(self):
         if os.path.isfile("/tmp/testing-collector-rest.csv"):
-            with open("/tmp/testing-collector-rest.csv") as logfile:
-                return logfile
+            with open("/tmp/testing-collector-rest.csv", "r") as logfile:
+                return logfile.read()
         return False
 
 

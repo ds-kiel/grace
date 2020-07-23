@@ -33,7 +33,7 @@ class Action(Enum):
 
 # TODO read from file
 # TODO handle 404, no route to host etc.
-nodes = ["192.168.87.232"]
+nodes = ["raspi20", "raspi05", "raspi07"]
 collector_node_states = {}
 collector_node_start_timestamp = {}
 collector_node_stop_timestamp = {}
@@ -47,6 +47,7 @@ lock = threading.Lock()
 # Define a function for the thread
 def start_nodes():
     global collector_node_states
+    global collector_node_start_timestamp
 
     lock.acquire()
     for node in collector_node_states.keys():
@@ -63,8 +64,8 @@ def start_nodes():
         # check all pending nodes whether they received the pulse
         for node,old_state in collector_node_states.items():
             if old_state == NodeState.PENDING_SYNC:
-                new_state = requests.get("http://{}:5000/state".format(node)).content
-                collector_node_states[node] = NodeState(int(new_state))
+                new_state = NodeState(int(requests.get("http://{}:5000/state".format(node)).content))
+                collector_node_states[node] = new_state
                 if new_state == NodeState.COLLECTING:
                     collector_node_start_timestamp[node] = timestamp;
 
@@ -73,6 +74,7 @@ def start_nodes():
 # TODO handle the case that the node is IDLE
 def stop_nodes():
     global collector_node_states
+    global collector_node_stop_timestamp
     lock.acquire()
 
     for node in collector_node_states.keys():
@@ -89,8 +91,8 @@ def stop_nodes():
         # check all pending nodes whether they received the pulse
         for node,old_state in collector_node_states.items():
             if old_state == NodeState.PENDING_SYNC:
-                new_state = requests.get("http://{}:5000/state".format(node)).content
-                collector_node_states[node] = NodeState(int(new_state))
+                new_state = NodeState(int(requests.get("http://{}:5000/state".format(node)).content))
+                collector_node_states[node] = new_state
                 if new_state == NodeState.IDLE:
                     collector_node_stop_timestamp[node] = timestamp;
     lock.release()
@@ -106,6 +108,17 @@ class State(Resource):
             res = requests.get("http://{}:5000/state".format(node)).content
             states[node] = NodeState(int(res))
         return str(states)
+
+
+class Factors(Resource):
+    global collector_node_start_timestamp
+    global collector_node_stop_timestamp
+
+    def get(self):
+        factors = {}
+        for node in nodes:
+            factors[node] = (collector_node_start_timestamp[node], collector_node_stop_timestamp[node])
+        return str(factors)
 
 class Start(Resource):
     start_action_thread = None
@@ -141,6 +154,7 @@ class Stop(Resource):
 api.add_resource(Start, '/start')
 api.add_resource(Stop, '/stop')
 api.add_resource(State, '/state')
+api.add_resource(Factors, '/factors')
 
 
 if __name__ == '__main__':
