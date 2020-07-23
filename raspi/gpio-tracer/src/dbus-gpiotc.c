@@ -16,8 +16,6 @@
 static gboolean start = FALSE;
 static gboolean stop = FALSE;
 static gchar* logpath = NULL;
-static gchar* device = NULL;
-static guint32 samplerate = 8000000;
 static gboolean wait_sync = FALSE;
 
 
@@ -25,9 +23,7 @@ static const GOptionEntry entries[] = {
   {"start",      's'    , 0, G_OPTION_ARG_NONE,     &start      , "Tell daemon to start gpio tracing",                 NULL},
   {"stop",       'k'    , 0, G_OPTION_ARG_NONE,     &stop       , "Tell daemon to start gpio tracing",                 NULL},
   {"logpath",    'l'    , 0, G_OPTION_ARG_FILENAME, &logpath    , "path where the trace logs should be stored ",       NULL},
-  {"samplerate", 'r'    , 0, G_OPTION_ARG_INT,      &samplerate , "rate with which the device should sample",          NULL},
   {"sync",       'S'    , 0, G_OPTION_ARG_NONE,     &wait_sync  , "wait for a sync pulse from a sync node",            NULL},
-  {"device",     'd'    , 0, G_OPTION_ARG_STRING,   &device     , "device which should start tracing {sigrok/pigpio}", NULL},
   { NULL }
 };
 
@@ -95,26 +91,17 @@ static void on_name_appeared(GDBusConnection *connection, const gchar *name,
 
   if(start) {
     method = "Start";
-    const gchar* _device  = NULL;
     const gchar* _logpath = NULL;
-
-    if (device != NULL) {
-      _device = device;
-    } else {
-      _device = "pigpio";
-    }
     if (logpath != NULL) {
       _logpath = logpath;
     } else {
       _logpath = "/tmp/gpio-default-log.csv"; // TODO don't output if no logpath is passed
     }
-    parameters = g_variant_new("(susb)", _device, samplerate,  _logpath, wait_sync); // TODO use _ prefix for 'globals'
+    parameters = g_variant_new("(sb)", _logpath, wait_sync); // TODO use _ prefix for 'globals'
   } else if(stop) {
     method = "Stop";
-    if(device == NULL) {
-      device = "all";
-    }
-    parameters = g_variant_new("(sb)", device, wait_sync);
+
+    parameters = g_variant_new("(b)", wait_sync);
   }
 
   g_printf("%s/n", daemon_call_control_interface_method(connection, name_owner, method, parameters, &error));

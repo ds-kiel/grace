@@ -11,9 +11,9 @@
 #include <stdbool.h>
 
 static const guint8 _receiver_channel = 1; // CH2 is used for the receiver signal
-static gboolean _running;
+static gboolean _running = FALSE;
 
-static gboolean _start_collecting_samples;
+static gboolean _collect_samples;
 static gboolean _wait_for_sync;
 static enum action _expected_action;
 
@@ -100,7 +100,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                             timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = first_sync_timestamp};
                             write_comment("Trace Start");
                             write_sample(data);
-                            _start_collecting_samples = TRUE;
+                            _collect_samples = TRUE;
                             sample_count = 0; // Timestamps of sample will start from this point off
                             g_printf("Start recording samples now!\n");
 
@@ -111,7 +111,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                             write_comment("Trace Stop");
                             g_printf("Stop recording samples now!\n");
 
-                            _start_collecting_samples = FALSE;
+                            _collect_samples = FALSE;
                             la_sigrok_do_stop_instance();
                           } else if (_expected_action == LA_SIGROK_ACTION_TIMESTAMP) {
 
@@ -137,7 +137,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                 } else if (_channels[k].mode & MATCH_RISING){  // rising signal
                   state = 1;
                 }
-                if (_start_collecting_samples) {
+                if (_collect_samples) {
                   timestamp_t data = {.channel = _channels[k].channel, .state = state, .time = timestamp_from_samples(sample_count)};
                   write_sample(data);
                 }
@@ -188,7 +188,7 @@ int la_sigrok_stop_instance(gboolean wait_sync) {
   return la_sigrok_do_stop_instance();
 }
 
-static int la_sigrok_kill_instance() {
+int la_sigrok_kill_instance() {
   int ret;
 
   if(_running || sr_session == NULL) {
@@ -221,48 +221,15 @@ void session_stopped_callback(void* data) {
   g_printf("Session has stoppped!\n");
   close_output_file();
   _running = FALSE;
-  if (la_sigrok_kill_instance() < 0) {
-      g_printf("Could not destroy instance");
-  }
 }
 
 
 // ownership of channel_modes is transfered to la_sigrok_init_instance(), so the GVariant should not be unreffed by the callee!
 // returns -1 on failure. returns 1 if session already exists
-int la_sigrok_init_instance(guint32 samplerate, const gchar* logpath, GVariant* channel_modes)
+int la_sigrok_init_instance(guint32 samplerate)
 {
   g_printf("Initializing sigrok instance\n");
 
-  // parse channel_modes to create _active_channel_mask
-  GVariantIter *iter;
-  gint8 length;
-  gint8 channel,mode;
-
-  g_variant_get(channel_modes, "a(yy)", &iter);
-  length = 0;
-  while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) length++;
-  g_variant_iter_free(iter);
-  _channels = malloc(length * sizeof(struct channel_mode));
-  _channel_count = length;
-  g_variant_get(channel_modes, "a(yy)", &iter);
-
-  _active_channel_mask = 0;
-  gint8 k = 0;
-  while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) {
-    g_printf("add channel %d with mode %d\n", channel, mode);
-    _active_channel_mask += 1<<channel;
-    _channels[k].channel = channel;
-    _channels[k].mode = mode;
-    k++;
-  }
-
-  g_variant_iter_free(iter);
-  g_variant_unref(channel_modes);
-
-  if (open_output_file(logpath, TRUE) < 0) {
-    g_printf("Unable to open output file %s\n", logpath);
-    return -1;
-  }
 
   // initialize sigrok if none is already created
   if (sr_session != NULL) {
@@ -392,23 +359,63 @@ int la_sigrok_init_instance(guint32 samplerate, const gchar* logpath, GVariant* 
   return 0;
 }
 
-gboolean la_sigrok_get_sync_state() {
+gboolean la_sigrok_waiting_sync() {
   return _wait_for_sync;
 }
 
-// returns -1 if session could not be starten
-int la_sigrok_run_instance (gboolean wait_sync) {
+gboolean la_sigrok_running() {
+  return _running;
+}
+
+int la_sigrok_run_instance (gboolean wait_sync, const gchar* logpath, GVariant* channel_modes) {
   int ret;
+
+  if(_running) {
+    g_printf("Instance already running!\n");
+    return 1;
+  }
+
+
+  // parse channel_modes to create _active_channel_mask
+  GVariantIter *iter;
+  gint8 length;
+  gint8 channel,mode;
+
+  g_variant_get(channel_modes, "a(yy)", &iter);
+  length = 0;
+  while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) length++;
+  g_variant_iter_free(iter);
+  _channels = malloc(length * sizeof(struct channel_mode));
+  _channel_count = length;
+  g_variant_get(channel_modes, "a(yy)", &iter);
+
+  _active_channel_mask = 0;
+  gint8 k = 0;
+  while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) {
+    g_printf("add channel %d with mode %d\n", channel, mode);
+    _active_channel_mask += 1<<channel;
+    _channels[k].channel = channel;
+    _channels[k].mode = mode;
+    k++;
+  }
+
+  g_variant_iter_free(iter);
+  g_variant_unref(channel_modes);
+
+  if (open_output_file(logpath, TRUE) < 0) {
+    g_printf("Unable to open output file %s\n", logpath);
+    return -1;
+  }
 
   if (wait_sync) {
       g_printf("Ok! I will start when sync pulse arrives!\n");
       _wait_for_sync = TRUE;
       _expected_action = LA_SIGROK_ACTION_START;
-      _start_collecting_samples = FALSE;
+      _collect_samples = FALSE;
   } else {
     // otherwise start collecting samples immediately
     _wait_for_sync = FALSE;
-    _start_collecting_samples = TRUE;
+    _collect_samples = TRUE;
   }
 
 

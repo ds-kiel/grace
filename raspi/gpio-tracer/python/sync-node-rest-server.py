@@ -33,7 +33,7 @@ class Action(Enum):
 
 # TODO read from file
 # TODO handle 404, no route to host etc.
-nodes = ["192.168.87.230"]
+nodes = ["192.168.87.232"]
 collector_node_states = {}
 collector_node_start_timestamp = {}
 collector_node_stop_timestamp = {}

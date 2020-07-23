@@ -2,9 +2,9 @@ from flask import Flask
 from flask_restful import Resource, Api
 
 import dbus
+import os.path
 
 system_bus = dbus.SystemBus()
-
 controller = system_bus.get_object('org.cau.gpiot',
                             '/org/cau/gpiot/Controller')
 controller_iface = dbus.Interface(controller,
@@ -15,22 +15,30 @@ api = Api(app)
 
 class Start(Resource):
     def get(self):
-        gpiotd_result = controller_iface.Start("sigrok", 8000000, "/tmp/testing-collector-rest.csv", True) # result :: dbus.String
+        gpiotd_result = controller_iface.Start("/tmp/testing-collector-rest.csv", True) # result :: dbus.String
         return gpiotd_result == "Started collecting on device sigrok" # Big uff. Use dbus error types or something
 
 class Stop(Resource):
     def get(self):
-        gpiotd_result = controller_iface.Stop("sigrok", True) # result :: dbus.String
+        gpiotd_result = controller_iface.Stop(True)
         return gpiotd_result == "Stopped collecting on device sigrok"
 
 class CollectorState(Resource):
     def get(self):
-        gpiotd_result = controller_iface.getState() # result :: dbus.String
+        gpiotd_result = controller_iface.getState()
         return gpiotd_result
+
+class Logs(Resource):
+    def get(self):
+        if os.path.isfile("/tmp/testing-collector-rest.csv"):
+            with open("/tmp/testing-collector-rest.csv") as logfile:
+                return logfile
+        return False
 
 
 api.add_resource(Start, '/start')
 api.add_resource(Stop, '/stop')
+api.add_resource(Logs, '/log')
 api.add_resource(CollectorState, '/state')
 
 if __name__ == '__main__':

@@ -13,10 +13,6 @@
 #include <glib/gprintf.h>
 #include <unistd.h>
 
-
-gpiot_daemon_state_t state = GPIOTD_IDLE;
-gpiot_devices_t device = GPIOT_DEVICE_NONE;
-
 static GDBusNodeInfo* introspection_data = NULL;
 
 /* Introspection data for the service we are exporting */
@@ -27,15 +23,12 @@ static const gchar introspection_xml[] =
   "    <annotation name='org.cau.gpiot.Annotation' value='AlsoOnInterface'/>"
   "    <method name='Start'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
-  "      <arg type='s' name='device' direction='in'/>"
-  "      <arg type='u' name='samplerate' direction='in'/>"
   "      <arg type='s' name='logPath' direction='in'/>"
   "      <arg type='b' name='waitForSync' direction='in'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
   "    <method name='Stop'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
-  "      <arg type='s' name='device' direction='in'/>"
   "      <arg type='b' name='waitForSync' direction='in'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
@@ -66,74 +59,62 @@ static void handle_method_call(GDBusConnection *connnection,
   gchar *result;
   g_printf("handle Method invocation with %s\n", method_name);
   if (!g_strcmp0(method_name, "Start")) {
-    const gchar *device;
+    int ret;
     const gchar *logpath;
-    guint32 samplerate;
     gboolean wait_sync;
 
     g_printf("Invocation: Start\n");
 
-    g_variant_get(parameters, "(&su&sb)", &device, &samplerate, &logpath, &wait_sync);
-    g_printf("Parameters: %s %" PRIu32 " %s %c\n", device, samplerate, logpath, wait_sync);
+    g_variant_get(parameters, "(&sb)", &logpath, &wait_sync);
+    g_printf("Parameters: %s %c\n", logpath, wait_sync);
 
-    if (!g_strcmp0(device, "sigrok")) {
-      GVariantBuilder* channel_modes_builder = g_variant_builder_new(G_VARIANT_TYPE("a(yy)"));
-      GVariant* channel_modes;
-      g_variant_builder_add(channel_modes_builder, "(yy)", 0, MATCH_FALLING | MATCH_RISING);
-      g_variant_builder_add(channel_modes_builder, "(yy)", 1, MATCH_FALLING | MATCH_RISING);
-      g_variant_builder_add(channel_modes_builder, "(yy)", 2, MATCH_FALLING | MATCH_RISING);
-      channel_modes = g_variant_new("a(yy)", channel_modes_builder);
-      g_variant_builder_unref(channel_modes_builder);
+    GVariantBuilder* channel_modes_builder = g_variant_builder_new(G_VARIANT_TYPE("a(yy)"));
+    GVariant* channel_modes;
+    g_variant_builder_add(channel_modes_builder, "(yy)", 0, MATCH_FALLING | MATCH_RISING);
+    g_variant_builder_add(channel_modes_builder, "(yy)", 1, MATCH_FALLING | MATCH_RISING);
+    g_variant_builder_add(channel_modes_builder, "(yy)", 2, MATCH_FALLING | MATCH_RISING);
+    channel_modes = g_variant_new("a(yy)", channel_modes_builder);
+    g_variant_builder_unref(channel_modes_builder);
 
-      g_print(g_variant_print(channel_modes,TRUE));
-
-      // owner ship of channel_modes is transfered to la_sigrok_init
-      if (la_sigrok_init_instance(samplerate, logpath, channel_modes) < 0) {
-        result = g_strdup_printf("Unable to init sigrok instance\n");
-      } else {
-        g_printf("run sigrok instance\n");
-
-        if (la_sigrok_run_instance(wait_sync) < 0) {
-          result = g_strdup_printf("Unable to run sigrok instance %s!", device);
-        } else {
-          result = g_strdup_printf("Started collecting on device %s", device);
-          state = GPIOTD_COLLECTING;
-        }
-      }
-    } else if (!g_strcmp0(device, "pigpio")) {
-        result = g_strdup_printf("pigpio not implemented anymore!");
+    g_print(g_variant_print(channel_modes,TRUE));
+    if ((ret = la_sigrok_run_instance(wait_sync, logpath, channel_modes)) < 0) {
+      result = g_strdup_printf("Unable to run instance");
+    } else if (ret > 0) {
+      result = g_strdup_printf("Instance already running");
     } else {
-      result = g_strdup_printf("Device %s not known!", device);
+      result = g_strdup_printf("Started collection on device");
     }
 
     g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
 
   } else if (!g_strcmp0(method_name, "Stop")) {
-    const gchar *device;
     gboolean wait_sync;
 
     g_printf("Invocation: Stop\n");
 
-    g_variant_get(parameters, "(&sb)", &device, &wait_sync);
-    g_printf("got: %s %c\n", device, wait_sync);
+    g_variant_get(parameters, "(b)", &wait_sync);
+    g_printf("got: %c\n", wait_sync);
 
-    if (state == GPIOTD_COLLECTING) { // TODO track what device exactly is collecting!
-      if (!g_strcmp0(device, "pigpio")) {
-        result = g_strdup_printf("pigpio not implemented anymore!");
-      } else if (!g_strcmp0(device, "sigrok")) {
-        la_sigrok_stop_instance(wait_sync);
+    if (la_sigrok_running()) { // TODO track what device exactly is collecting!
+      int ret;
+      if ((ret = la_sigrok_stop_instance(wait_sync)) >= 1) {
+        result = g_strdup_printf("Waiting for sync");
+      } else if (ret == 0) {
+        result = g_strdup_printf("Stopped");
+      } else {
+        result = g_strdup_printf("Could not stop instance");
       }
-      state = GPIOTD_IDLE;
-      result = g_strdup_printf("Stopped collecting on device %s", device);
     } else {
-      result = g_strdup_printf("No instance running for %s", device);
+      result = g_strdup_printf("No instance running");
     }
     g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
   } else if (!g_strcmp0(method_name, "getState")) {
-    gpiot_daemon_state_t _state = state;
-    if(state == GPIOTD_COLLECTING && !la_sigrok_get_sync_state()) _state = GPIOTD_PENDING_SYNC; // TODO spaghetti code. Handle some other way
+    gpiot_daemon_state_t state;
+    if(la_sigrok_running() && la_sigrok_waiting_sync()) state = GPIOTD_PENDING_SYNC; // TODO spaghetti code. Handle some other way
+    else if (la_sigrok_running()) state = GPIOTD_COLLECTING;
+    else state = GPIOTD_IDLE;
 
-    g_dbus_method_invocation_return_value(invocation, g_variant_new("(i)", _state));
+    g_dbus_method_invocation_return_value(invocation, g_variant_new("(i)", state));
   }
 
 
@@ -193,6 +174,11 @@ int main(int argc, char *argv[])
   main_context  =  g_main_context_new();
   g_main_context_push_thread_default(main_context);
 
+  if(la_sigrok_init_instance(8000000) < 0) {
+    g_printf("Could not initialize sigrok gpiot instance!\n");
+    goto cleanup;
+  }
+
   introspection_data = g_dbus_node_info_new_for_xml(introspection_xml, NULL);
   g_assert(introspection_data != NULL);
 
@@ -206,10 +192,11 @@ int main(int argc, char *argv[])
   }
 
   // ------ destruction ------
-
-  g_bus_unown_name(owner_id);
-  g_dbus_node_info_unref(introspection_data);
-  g_main_context_pop_thread_default(main_context);
+cleanup:
+    la_sigrok_kill_instance();
+    g_bus_unown_name(owner_id);
+    g_dbus_node_info_unref(introspection_data);
+    g_main_context_pop_thread_default(main_context);
 
   return 0;
 }

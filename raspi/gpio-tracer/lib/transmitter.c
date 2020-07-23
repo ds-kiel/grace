@@ -33,5 +33,7 @@ guint64 transmitter_send_pulse()
     g_usleep(TRANSMITTER_SYNC_LENGTH);
   }
 
+  gpioTerminate();
+
   return timestamp_nanoseconds;
 }

@@ -16,12 +16,6 @@
 /*   LA_ERROR = -1, */
 /* } */
 
-typedef enum gpiot_devices {
-  GPIOT_DEVICE_NONE,
-  GPIOT_DEVICE_PIGPIO,
-  GPIOT_DEVICE_SALEAE,
-} gpiot_devices_t;
-
 typedef enum gpiot_daemon_state {
   GPIOTD_IDLE = 1,
   GPIOTD_COLLECTING = 2,
