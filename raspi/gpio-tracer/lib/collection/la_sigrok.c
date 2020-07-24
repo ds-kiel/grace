@@ -96,17 +96,18 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                         if(sync_pulse_count >= TRANSMITTER_SYNC_PULSES) {
                           sync_pulse_count = 0;
                           if(_expected_action == LA_SIGROK_ACTION_START) {
-
-                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = first_sync_timestamp};
+                            sample_count = 0; // Timestamps of sample will start from this point off
+                            /* timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = first_sync_timestamp}; */ // use first edge of the pulse series for timestamp
+                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = sample_count}; // use last edge of the pulse series for timestamp
                             write_comment("Trace Start");
                             write_sample(data);
                             _collect_samples = TRUE;
-                            sample_count = 0; // Timestamps of sample will start from this point off
                             g_printf("Start recording samples now!\n");
 
                           } else if (_expected_action == LA_SIGROK_ACTION_STOP) {
 
-                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = first_sync_timestamp};
+                            /* timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = first_sync_timestamp}; */
+                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = sample_count};
                             write_sample(data);
                             write_comment("Trace Stop");
                             g_printf("Stop recording samples now!\n");
@@ -188,7 +189,7 @@ int la_sigrok_stop_instance(gboolean wait_sync) {
   return la_sigrok_do_stop_instance();
 }
 
-int la_sigrok_kill_instance() {
+static int la_sigrok_kill_instance() {
   int ret;
 
   if(_running || sr_session == NULL) {
@@ -221,12 +222,13 @@ void session_stopped_callback(void* data) {
   g_printf("Session has stoppped!\n");
   close_output_file();
   _running = FALSE;
+  la_sigrok_kill_instance();
 }
 
 
 // ownership of channel_modes is transfered to la_sigrok_init_instance(), so the GVariant should not be unreffed by the callee!
 // returns -1 on failure. returns 1 if session already exists
-int la_sigrok_init_instance(guint32 samplerate)
+static int la_sigrok_init_instance(guint32 samplerate)
 {
   g_printf("Initializing sigrok instance\n");
 
@@ -375,6 +377,10 @@ int la_sigrok_run_instance (gboolean wait_sync, const gchar* logpath, GVariant* 
     return 1;
   }
 
+  if (la_sigrok_init_instance(8000000) < 0) {
+    g_printf("Could not initialize sigrok instance!\n");
+    return -1;
+  };
 
   // parse channel_modes to create _active_channel_mask
   GVariantIter *iter;

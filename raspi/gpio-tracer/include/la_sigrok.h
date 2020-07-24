@@ -16,8 +16,6 @@ enum action {
 };
 
 /* --- proto --- */
-int la_sigrok_init_instance(guint32 samplerate);
-int la_sigrok_kill_instance();
 int la_sigrok_run_instance(gboolean wait_sync, const gchar* logpath, GVariant* channel_modes);
 int la_sigrok_stop_instance(gboolean wait_sync);
 // TODO rename to something more meaninfull
@@ -25,6 +23,8 @@ gboolean la_sigrok_waiting_sync(); // returns TRUE if device is waiting for a sy
 gboolean la_sigrok_running();
 
 static int la_sigrok_do_stop_instance();
+static int la_sigrok_init_instance(guint32 samplerate);
+static int la_sigrok_kill_instance();
 
 // only has an effect if sync_pulses are used
 /* void la_sigrok_set_expected_action(enum action expected_action); */

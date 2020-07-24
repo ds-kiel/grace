@@ -4,8 +4,7 @@ After=dbus-org.cau.gpiot.service
 
 [Service]
 Type=simple
-Environment="LD_LIBRARY_PATH=/usr/testbed/gpio-tracer"
-ExecStart=/usr/bin/python3 /usr/testbed/gpio-tracer/python/sync-node-rest-server.py
+ExecStart=/usr/testbed/gpio-tracer/sync-server-wrapper.sh
 Restart=on-failure
 
 [Install]

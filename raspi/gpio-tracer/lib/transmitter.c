@@ -9,6 +9,9 @@
 // returns the nanosecond timestamp at which the pulse was transmitted
 guint64 transmitter_send_pulse()
 {
+  struct timespec pulse_time;
+  guint64 timestamp_nanoseconds;
+
   if (gpioInitialise() < 0)
     return 0;
 
@@ -22,9 +25,6 @@ guint64 transmitter_send_pulse()
   }
 
   // save time at beginning of pulse. TODO this probably adds a small delay again. Find out how big this is
-  struct timespec pulse_time;
-  clock_gettime(CLOCK_REALTIME, &pulse_time);
-  guint64 timestamp_nanoseconds = (guint64) pulse_time.tv_sec * 1e9 + (guint64) pulse_time.tv_nsec;
 
   for(int i = 0; i < TRANSMITTER_SYNC_PULSES; i++) {
     gpioWrite(TRANSMITTER_GPIO_PIN, 1);
@@ -32,6 +32,9 @@ guint64 transmitter_send_pulse()
     gpioWrite(TRANSMITTER_GPIO_PIN, 0);
     g_usleep(TRANSMITTER_SYNC_LENGTH);
   }
+
+  clock_gettime(CLOCK_REALTIME, &pulse_time);
+  timestamp_nanoseconds = (guint64) pulse_time.tv_sec * 1e9 + (guint64) pulse_time.tv_nsec;
 
   gpioTerminate();
 

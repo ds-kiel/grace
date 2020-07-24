@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, make_response
 from flask_restful import Resource, Api
 
 import dbus
@@ -32,7 +32,9 @@ class Logs(Resource):
     def get(self):
         if os.path.isfile("/tmp/testing-collector-rest.csv"):
             with open("/tmp/testing-collector-rest.csv", "r") as logfile:
-                return logfile.read()
+                response = make_response(logfile.read(), 200)
+                response.mimetype = "text/plain"
+                return response
         return False
 
 

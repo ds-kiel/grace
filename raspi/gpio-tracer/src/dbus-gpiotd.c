@@ -95,7 +95,7 @@ static void handle_method_call(GDBusConnection *connnection,
     g_variant_get(parameters, "(b)", &wait_sync);
     g_printf("got: %c\n", wait_sync);
 
-    if (la_sigrok_running()) { // TODO track what device exactly is collecting!
+    if (la_sigrok_running()) {
       int ret;
       if ((ret = la_sigrok_stop_instance(wait_sync)) >= 1) {
         result = g_strdup_printf("Waiting for sync");
@@ -174,10 +174,10 @@ int main(int argc, char *argv[])
   main_context  =  g_main_context_new();
   g_main_context_push_thread_default(main_context);
 
-  if(la_sigrok_init_instance(8000000) < 0) {
-    g_printf("Could not initialize sigrok gpiot instance!\n");
-    goto cleanup;
-  }
+  /* if(la_sigrok_init_instance(8000000) < 0) { */
+  /*   g_printf("Could not initialize sigrok gpiot instance!\n"); */
+  /*   goto cleanup; */
+  /* } */
 
   introspection_data = g_dbus_node_info_new_for_xml(introspection_xml, NULL);
   g_assert(introspection_data != NULL);
@@ -193,7 +193,6 @@ int main(int argc, char *argv[])
 
   // ------ destruction ------
 cleanup:
-    la_sigrok_kill_instance();
     g_bus_unown_name(owner_id);
     g_dbus_node_info_unref(introspection_data);
     g_main_context_pop_thread_default(main_context);
