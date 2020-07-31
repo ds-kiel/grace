@@ -28,7 +28,7 @@ static int flush_buffer_to_log() {
 
 int open_output_file(const gchar* filename, gboolean overwrite) {
   fp = fopen(filename, overwrite ? "w+" : "a+");
-  fprintf(fp, "GPIO, Edge, Time\n");
+  fprintf(fp, "# GPIO, Edge, Time\n");
   if(fp == NULL) return -1;
 
   #ifdef USE_CONSTANT_SIZE_BUFFER

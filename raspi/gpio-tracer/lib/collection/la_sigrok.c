@@ -107,7 +107,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                           } else if (_expected_action == LA_SIGROK_ACTION_STOP) {
 
                             /* timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = first_sync_timestamp}; */
-                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = sample_count};
+                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = timestamp_from_samples(sample_count)};
                             write_sample(data);
                             write_comment("Trace Stop");
                             g_printf("Stop recording samples now!\n");
@@ -116,7 +116,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                             la_sigrok_do_stop_instance();
                           } else if (_expected_action == LA_SIGROK_ACTION_TIMESTAMP) {
 
-                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = first_sync_timestamp};
+                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = timestamp_from_samples(sample_count)};
                             write_sample(data);
                             g_printf("Writing intermediate timestamp!\n");
 
