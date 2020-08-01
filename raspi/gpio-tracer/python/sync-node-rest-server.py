@@ -115,7 +115,7 @@ class Timestamps(Resource):
         for overseer_id in overseer_node_ids:
             if overseer_id in overseer_node_start_timestamp.keys() and overseer_id in overseer_node_stop_timestamp.keys():
                 timestamps[overseer_id] = (overseer_node_start_timestamp[overseer_id], overseer_node_stop_timestamp[overseer_id])
-        return str(timestamps)
+        return timestamps
 
 class Start(Resource):
     start_action_thread = None
