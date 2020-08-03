@@ -29,9 +29,9 @@ for sync_id in sync_node_ids:
     print(all_sync_timestamps)
 
 for overseer_id,log_content in log_contents.items():
-    # here also a dict reader could be used. In this case uncomment the first line GPIO, Edge, Time
+    # here also a dict reader could be used. In this case uncomment the first line #timestamp,channel,signal
     csv_log_content = csv.reader(decomment(log_content), delimiter=',', quotechar='|')
-    timestamps = list(map(lambda row: int(row[2]), filter(lambda row: int(row[0]) == receiver_pin, csv_log_content)))
+    timestamps = list(map(lambda row: int(row[0]), filter(lambda row: int(row[1]) == receiver_pin, csv_log_content)))
     print(timestamps)
 
     # TODO generalise to arbritary amount of sync timestamps
@@ -39,17 +39,15 @@ for overseer_id,log_content in log_contents.items():
 
     csv_log_content = csv.reader(decomment(log_content), delimiter=',', quotechar='|')
     for row in csv_log_content:
-        pin_id         = int(row[0])
-        digital_signal = int(row[1])
-        raw_timestamp   = int(row[2])
+        pin_id         = int(row[1])
+        digital_signal = int(row[2])
+        raw_timestamp   = int(row[0])
         scaled_timestamp = raw_timestamp * scale_factor
         combined_timestamp = scaled_timestamp + all_sync_timestamps[overseer_id][0]
-        combined_log_content.append([overseer_id, pin_id, digital_signal, int(combined_timestamp)])
+        combined_log_content.append([int(combined_timestamp), overseer_id, pin_id, digital_signal])
 
-combined_log_content_sorted = sorted(combined_log_content, key=lambda row: row[-1])
-print(str(combined_log_content_sorted))
-
-with open('testrun-gpio-traces.csv', 'w', newline='') as csvfile:
-    spamwriter = csv.writer(csvfile, delimiter=' ',
+combined_log_content_sorted = sorted(combined_log_content, key=lambda row: row[0])
+with open('gpiotraces.csv', 'w', newline='') as csvfile:
+    spamwriter = csv.writer(csvfile, delimiter=',',
                             quotechar='|', quoting=csv.QUOTE_MINIMAL)
     spamwriter.writerows(combined_log_content_sorted)

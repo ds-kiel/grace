@@ -16,7 +16,7 @@ timestamp_t* write_buffer;
 static int flush_buffer_to_log() {
     for(size_t k = 0; k < buf_index; k++) {
       timestamp_t* sample = &write_buffer[k];
-      fprintf(fp, "%d,%d,%" PRIu64 "\n", sample->channel, sample->state, sample->time);
+      fprintf(fp, "%" PRIu64 ",%d,%d\n", sample->time, sample->channel, sample->state);
     }
 
     buf_index = 0;
@@ -28,7 +28,7 @@ static int flush_buffer_to_log() {
 
 int open_output_file(const gchar* filename, gboolean overwrite) {
   fp = fopen(filename, overwrite ? "w+" : "a+");
-  fprintf(fp, "# GPIO, Edge, Time\n");
+  fprintf(fp, "#timestamp,channel,signal\n");
   if(fp == NULL) return -1;
 
   #ifdef USE_CONSTANT_SIZE_BUFFER
@@ -37,7 +37,6 @@ int open_output_file(const gchar* filename, gboolean overwrite) {
   return 0;
 }
 
-
 int close_output_file() {
   #ifdef USE_CONSTANT_SIZE_BUFFER
   flush_buffer_to_log();
@@ -45,13 +44,7 @@ int close_output_file() {
   fclose(fp);
   free(write_buffer);
 
-
   return 0;
-}
-
-int write_system_timestamp(char *event_name, struct timespec *timestamp) {
-  flush_buffer_to_log(); // hack, write this data at some seperate section. For example header.
-  fprintf(fp, "%s,%" PRIu64 "\n", event_name, ((guint64)timestamp->tv_sec*(guint64)1e9) + (guint64) timestamp->tv_nsec);
 }
 
 int write_comment(char *comment) {
@@ -62,7 +55,7 @@ int write_comment(char *comment) {
 // TODO maybe memory manage timestamps in timestamp.h and only
 int write_sample(timestamp_t sample) {
   #ifndef USE_CONSTANT_SIZE_BUFFER
-  fprintf(fp, "%d,%d,%" PRIu64 "\n", sample->channel, sample->state, sample->time);
+  fprintf(fp, "%" PRIu64 ",%d,%d\n", sample->time, sample->channel, sample->state);
   #else
   write_buffer[buf_index] = sample;
   buf_index++;
