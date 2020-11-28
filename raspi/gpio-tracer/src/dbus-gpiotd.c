@@ -32,6 +32,10 @@ static const gchar introspection_xml[] =
   "      <arg type='b' name='waitForSync' direction='in'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
+  "    <method name='Sync'>"
+  "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
+  "      <arg type='s' name='result' direction='out'/>"
+  "    </method>"
   "    <method name='getState'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
   "      <arg type='i' name='result' direction='out'/>"
@@ -115,6 +119,14 @@ static void handle_method_call(GDBusConnection *connnection,
     else state = GPIOTD_IDLE;
 
     g_dbus_method_invocation_return_value(invocation, g_variant_new("(i)", state));
+  } else if (!g_strcmp0(method_name, "Sync")) {
+    if(la_sigrok_running()) {
+      if(!la_sigrok_waiting_sync()) {
+        la_sigrok_announce_sync();
+        result = g_strdup_printf("Expecting Sync");
+      }
+    }
+    g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
   }
 
 

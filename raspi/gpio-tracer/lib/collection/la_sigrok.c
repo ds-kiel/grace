@@ -39,7 +39,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
   static gboolean initial_df_logic_packet = TRUE;
   static uint8_t last;
   static guint64 last_transmitter_timestamp;
-  static guint64 first_sync_timestamp;
+  /* static guint64 first_sync_timestamp; */
   static guint8 sync_pulse_count;
   static guint64 sample_count;
 
@@ -87,8 +87,8 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                       if (difference_in_microseconds > TRANSMITTER_SYNC_LENGTH/TRANSMITTER_SYNC_LENGTH_TOLERANCE
                           && difference_in_microseconds < TRANSMITTER_SYNC_LENGTH*TRANSMITTER_SYNC_LENGTH_TOLERANCE) {
 
-                        if(sync_pulse_count <= 0)
-                          first_sync_timestamp = current_transmitter_timestamp;
+                        /* if(sync_pulse_count <= 0) */
+                        /*   first_sync_timestamp = current_transmitter_timestamp; */
 
                         sync_pulse_count++;
                         g_printf("Got %dnth sync pulse, difference_in_microseconds: %" PRIu64 "\n", sync_pulse_count, difference_in_microseconds);
@@ -96,9 +96,9 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                         if(sync_pulse_count >= TRANSMITTER_SYNC_PULSES) {
                           sync_pulse_count = 0;
                           if(_expected_action == LA_SIGROK_ACTION_START) {
-                            sample_count = 0; // Timestamps of sample will start from this point off
+                            /* sample_count = 0; // Timestamps of sample will start from this point off */
                             /* timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = first_sync_timestamp}; */ // use first edge of the pulse series for timestamp
-                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = sample_count}; // use last edge of the pulse series for timestamp
+                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = timestamp_from_samples(sample_count)}; // use last edge of the pulse series for timestamp
                             write_comment("Trace Start");
                             write_sample(data);
                             _collect_samples = TRUE;
@@ -125,6 +125,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                         }
                       } else {
                         sync_pulse_count = 0;
+                        g_printf("decline pulse, difference_in_microseconds: %" PRIu64 "\n", difference_in_microseconds);
                       }
                     }
                   }
@@ -223,6 +224,16 @@ void session_stopped_callback(void* data) {
   close_output_file();
   _running = FALSE;
   la_sigrok_kill_instance();
+}
+
+
+// returns 0 on sucess, -1 on error (for example already waiting for another sync)
+int la_sigrok_announce_sync() {
+  if (_wait_for_sync)
+    return -1;
+
+  _wait_for_sync = TRUE;
+  _expected_action = LA_SIGROK_ACTION_TIMESTAMP;
 }
 
 
