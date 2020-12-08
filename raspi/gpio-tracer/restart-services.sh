@@ -1,6 +1,7 @@
 #! /usr/bin/env bash
 
-remotes=(uni-rasp-15 uni-rasp-07 uni-rasp-05 uni-rasp-20)
+remotes=(uni-rasp-15 uni-rasp-07 uni-rasp-05 uni-rasp-20 uni-rasp-02 uni-rasp-03)
+# remotes=(uni-rasp-02 uni-rasp-03 uni-rasp-15)
 
 for i in "${remotes[@]}"; do
     if [ $i == uni-rasp-15 ]; then

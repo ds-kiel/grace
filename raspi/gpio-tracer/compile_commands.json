@@ -1,7 +1,1 @@
-[
-{
-  "directory": "/home/christian/Projects/Bachelorarbeit/logic-analyzer/build",
-  "command": "/gnu/store/hdp1bbgvrkn00d2d6smbwbgvn95xv4f2-profile/bin/gcc  -I/gnu/store/lcyvnisb143n6zvlnwynd4m3x2dcbl57-libsigrok-0.5.2/include -I/gnu/store/i7py0fy1rqjyapcp889h90qa1dvpbf2m-libserialport-0.1.1/include -I/gnu/store/9bfxyfqx12mnxwh715y23djnp239qh1b-libusb-1.0.23/include/libusb-1.0 -I/gnu/store/jhiars597vxzzral5jdqvfnbbc4z2yhb-glib-2.62.6/include -I/gnu/store/rykm237xkmq7rl1p0nwass01p090p88x-zlib-1.2.11/include -I/gnu/store/a45p39mgqvfd8kjwibyr0q42k1mw7gmf-util-linux-2.35.1-lib/include/libmount -I/gnu/store/a45p39mgqvfd8kjwibyr0q42k1mw7gmf-util-linux-2.35.1-lib/include/blkid -I/gnu/store/vnblkrqa7w6cq199mvj5jvnvhm6vldcg-libselinux-3.0/include -I/gnu/store/8nh0hbrr8iaz6qkwavcnzi0824f3xb68-libsepol-3.0/include -I/gnu/store/bw15z9kh9c65ycc2vbhl2izwfwfva7p1-libffi-3.3/include -I/gnu/store/xwddnld5s9ggb127n1lwh5y2yj9lpv2n-libzip-1.6.1/include -I/gnu/store/jhiars597vxzzral5jdqvfnbbc4z2yhb-glib-2.62.6/include/glib-2.0 -I/gnu/store/jhiars597vxzzral5jdqvfnbbc4z2yhb-glib-2.62.6/lib/glib-2.0/include -I/gnu/store/k0aqiy7yx8n28dvm3f0a04ka5sd8y950-pcre-8.44/include -I/gnu/store/r1cig1i1xi9m38zqxdcikf8ba9slnrq8-libftdi-1.4/include/libftdi1    -o CMakeFiles/lanalyzer.dir/src/main.c.o   -c /home/christian/Projects/Bachelorarbeit/logic-analyzer/src/main.c",
-  "file": "/home/christian/Projects/Bachelorarbeit/logic-analyzer/src/main.c"
-}
-]
+/home/christian/Projects/iot-testbed/raspi/gpio-tracer/build/compile_commands.json

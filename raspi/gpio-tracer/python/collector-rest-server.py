@@ -39,6 +39,7 @@ class Logs(Resource):
 
 
 api.add_resource(Start, '/start')
+api.add_resource(Sync, '/sync')
 api.add_resource(Stop, '/stop')
 api.add_resource(Logs, '/log')
 api.add_resource(CollectorState, '/state')

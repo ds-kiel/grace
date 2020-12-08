@@ -1,6 +1,6 @@
 * Design and Implementation of GPIO sensing for minimally intrusive tracing of distributed systems.
  oder Design and Implementation of GPIO sensing for minimally intrusive tracing of distributed network applications.
-
+2
 * Todo
 ** Contiki-NG Operating System: https://github.com/contiki-ng/contiki-ng, https://github.com/contiki-ng/contiki-ng/wiki
    Guck dir mal die Beispiele an, und welche GPIO Interface Möglichkeiten es für die Plattformen Sky und Zoul gibt.
@@ -82,3 +82,5 @@
 
   Schreiben in den I/O Buffer und Kommunikation mit dem Radio Medium läuft über das selbe Serielle Interface (UART1)
 ** https://www.argenox.com/library/msp430/general-purpose-input-output-gpio-chapter-5/
+* Attendance
+** <2020-06-30 Tue> 11:30-16:00

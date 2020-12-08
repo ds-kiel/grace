@@ -28,24 +28,27 @@ class Action(Enum):
 
 # TODO read from file
 # TODO handle 404, no route to host etc.
-overseer_node_ids = [20, 5, 7]
+# overseer_node_ids = [2, 3]
+overseer_node_ids = [2, 3, 20, 5]
 overseer_node_states = {}
-overseer_node_start_timestamp = {}
-overseer_node_stop_timestamp = {}
+overseer_node_timestamps = {}
+stop_syncing = False
 
 for overseer_id in overseer_node_ids:
     overseer_node_states[overseer_id] = NodeState.UNKNOWN
-
+    overseer_node_timestamps[overseer_id] = []
 lock = threading.Lock()
 
 # TODO handle nodes that are already collecting -> e.g. shutdown?
 # TODO handle dead nodes e.g. syncs never arrive
 # Define a function for the thread
 def start_overseers():
+    global stop_syncing
     global overseer_node_states
-    global overseer_node_start_timestamp
+    global overseer_node_timestamps
 
     lock.acquire()
+
     for overseer_id in overseer_node_states.keys():
         success = requests.get("http://raspi{:0>2}:5000/start".format(overseer_id)).content
         print("success: {}".format(success))
@@ -55,22 +58,45 @@ def start_overseers():
     while NodeState.PENDING_SYNC in list(overseer_node_states.values()):
         # After every body is informed send out pulse
         timestamp = transmitter_functions.transmitter_send_pulse()
-        time.sleep(0.5) # probably not needed just for safety for now
-
-        # check all pending nodes whether they received the pulse
+        time.sleep(0.2) # probably not needed just for safety for now
+     # check all pending nodes whether they received the pulse
         for overseer_id,old_state in overseer_node_states.items():
             if old_state == NodeState.PENDING_SYNC:
                 new_state = NodeState(int(requests.get("http://raspi{:0>2}:5000/state".format(overseer_id)).content))
                 overseer_node_states[overseer_id] = new_state
                 if new_state == NodeState.COLLECTING:
-                    overseer_node_start_timestamp[overseer_id] = timestamp;
+                    overseer_node_timestamps[overseer_id].append(timestamp);
+
+    # Sync loop
+    while not stop_syncing:
+        for overseer_id in overseer_node_states.keys():
+            print("informing nodes about incoming sync")
+            result = requests.get("http://raspi{:0>2}:5000/sync".format(overseer_id)).content
+            print("result: {}".format(success))
+            if success:
+                overseer_node_states[overseer_id] = NodeState.PENDING_SYNC
+
+        while NodeState.PENDING_SYNC in list(overseer_node_states.values()):
+            # After every body is informed send out pulse
+            print("sending sync pulse")
+            timestamp = transmitter_functions.transmitter_send_pulse()
+            time.sleep(0.1) # probably not needed just for safety for now
+            # check all pending nodes whether they received the pulse
+            for overseer_id,old_state in overseer_node_states.items():
+                if old_state == NodeState.PENDING_SYNC:
+                    new_state = NodeState(int(requests.get("http://raspi{:0>2}:5000/state".format(overseer_id)).content))
+                    overseer_node_states[overseer_id] = new_state
+                    if new_state == NodeState.COLLECTING:
+                        print("node {} successfull ack".format(overseer_id))
+                        overseer_node_timestamps[overseer_id].append(timestamp);
 
     lock.release()
+start_action_thread = None
 
 # TODO handle the case that the overseer_id is IDLE
 def stop_overseers():
     global overseer_node_states
-    global overseer_node_stop_timestamp
+    global overseer_node_timestamps
     lock.acquire()
 
     for overseer_id in overseer_node_states.keys():
@@ -90,10 +116,8 @@ def stop_overseers():
                 new_state = NodeState(int(requests.get("http://raspi{:0>2}:5000/state".format(overseer_id)).content))
                 overseer_node_states[overseer_id] = new_state
                 if new_state == NodeState.IDLE:
-                    overseer_node_stop_timestamp[overseer_id] = timestamp;
+                    overseer_node_timestamps[overseer_id].append(timestamp);
     lock.release()
-
-
 
 # timestamp_action_thread = threading.Thread(target=start_overseers)
 
@@ -107,25 +131,19 @@ class State(Resource):
 
 
 class Timestamps(Resource):
-    global overseer_node_start_timestamp
-    global overseer_node_stop_timestamp
-
     def get(self):
-        timestamps = {}
-        for overseer_id in overseer_node_ids:
-            if overseer_id in overseer_node_start_timestamp.keys() and overseer_id in overseer_node_stop_timestamp.keys():
-                timestamps[overseer_id] = (overseer_node_start_timestamp[overseer_id], overseer_node_stop_timestamp[overseer_id])
-        return timestamps
+        return overseer_node_timestamps
 
 class Start(Resource):
-    start_action_thread = None
-
     def get(self):
+        global stop_syncing
+        global start_action_thread
         # add timed event source to check acknowledgments
         try:
-            if Start.start_action_thread == None or not Start.start_action_thread.is_alive():
-                Start.start_action_thread = threading.Thread(target=start_overseers)
-                Start.start_action_thread.start()
+            if start_action_thread == None or not start_action_thread.is_alive():
+                stop_syncing = False
+                start_action_thread = threading.Thread(target=start_overseers)
+                start_action_thread.start()
             else:
                 return('start job already running')
         except:
@@ -136,17 +154,25 @@ class Stop(Resource):
     stop_action_thread = None
 
     def get(self):
+        global stop_syncing
+        global start_action_thread
         # add timed event source to check acknowledgments
-        try:
-            if Stop.stop_action_thread == None or not Stop.stop_action_thread.is_alive():
-                Stop.stop_action_thread = threading.Thread(target=stop_overseers)
-                Stop.stop_action_thread.start()
-            else:
-                return('stop job already running')
+        if start_action_thread != None and start_action_thread.is_alive():
+            stop_syncing = True
+            start_action_thread.join()
 
-        except:
-            return "Could not start thread"
-        return "Stopping overseers. Check status at /state"
+            try:
+                if Stop.stop_action_thread == None or not Stop.stop_action_thread.is_alive():
+                    Stop.stop_action_thread = threading.Thread(target=stop_overseers)
+                    Stop.stop_action_thread.start()
+                else:
+                    return('stop job already running')
+
+            except:
+                return "Could not start thread"
+            return "Stopping overseers. Check status at /state"
+        else:
+            return "No test running"
 
 api.add_resource(Start, '/start')
 api.add_resource(Stop, '/stop')
@@ -155,4 +181,4 @@ api.add_resource(Timestamps, '/timestamps')
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True, port=5000)
+    app.run(host='0.0.0.0', debug=False, port=5000)
