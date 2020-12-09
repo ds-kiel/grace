@@ -1,4 +1,4 @@
-#include <transmitter.h>
+#include <radio.h>
 #include <stdio.h>
 #include <glib.h>
 #include <inttypes.h>

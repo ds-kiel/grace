@@ -7,7 +7,7 @@ find_package(Threads REQUIRED)
 
 set(CMAKE_INSTALL_RPATH "$ORIGIN")
 
-add_library(analyzer collection/preprocess.c output.c timestamp.c transmitter.c)
+add_library(analyzer preprocess.c postprocess.c radio.c)
 
 target_include_directories(analyzer
   PUBLIC ${LIBSIGROK_INCLUDE_DIRS}

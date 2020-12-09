@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
   main_context  =  g_main_context_new();
   g_main_context_push_thread_default(main_context);
 
-  /* if(preprocess_init_instance(8000000) < 0) { */
+  /* if(preprocess_init_sigrok(8000000) < 0) { */
   /*   g_printf("Could not initialize sigrok gpiot instance!\n"); */
   /*   goto cleanup; */
   /* } */

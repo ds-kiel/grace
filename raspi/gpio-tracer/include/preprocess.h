@@ -17,7 +17,7 @@ int preprocess_announce_sync();
 // TODO rename to something more meaninfull
 gboolean preprocess_running();
 
-static int preprocess_init_instance(guint32 samplerate);
+static int preprocess_init_sigrok(guint32 samplerate);
 static int preprocess_kill_instance();
 
 #endif /* PREPROCESS_H */

@@ -1,8 +1,8 @@
 #include <preprocess.h>
 
-#include <output.h>
+#include <postprocess.h>
 #include <types.h>
-#include <transmitter.h>
+#include <radio.h>
 
 #include <libsigrok/libsigrok.h>
 #include <glib/gprintf.h>
@@ -68,7 +68,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
             if(delta) {
               if(k == _receiver_channel) {
                 if(delta < 1) { // Rising signal -> save timestamp
-                  timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = timestamp_from_samples(sample_count)}; // use last edge of the pulse series for timestamp
+                  trace_t data = {.channel = _receiver_channel, .state = 1, .timestamp_ns = timestamp_from_samples(sample_count)}; // use last edge of the pulse series for timestamp
                   write_sample(data);
                   write_comment("Trace Stop");
                 }
@@ -80,7 +80,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
               } else if (_channels[k].mode & MATCH_RISING){  // rising signal
                 state = 1;
               }
-              timestamp_t data = {.channel = _channels[k].channel, .state = state, .time = timestamp_from_samples(sample_count)};
+              trace_t data = {.channel = _channels[k].channel, .state = state, .timestamp_ns = timestamp_from_samples(sample_count)};
               write_sample(data);
             }
           }
@@ -149,9 +149,9 @@ void session_stopped_callback(void* data) {
 }
 
 
-// ownership of channel_modes is transfered to preprocess_init_instance(), so the GVariant should not be unreffed by the callee!
+// ownership of channel_modes is transfered to preprocess_init_sigrok(), so the GVariant should not be unreffed by the callee!
 // returns -1 on failure. returns 1 if session already exists
-static int preprocess_init_instance(guint32 samplerate)
+static int preprocess_init_sigrok(guint32 samplerate)
 {
   g_printf("Initializing sigrok instance\n");
 
@@ -274,9 +274,6 @@ static int preprocess_init_instance(guint32 samplerate)
     return -1;
   }
 
-  // Add gsource for sync ack signal
-  GSource *sync_ack_source;
-
   //cleanup
   g_array_free(fx2ladw_scn_opts, TRUE);
   g_slist_free(fx2ladw_dvcs);
@@ -296,7 +293,7 @@ int preprocess_run_instance (const gchar* logpath, GVariant* channel_modes) {
     return 1;
   }
 
-  if (preprocess_init_instance(8000000) < 0) {
+  if (preprocess_init_sigrok(8000000) < 0) {
     g_printf("Could not initialize sigrok instance!\n");
     return -1;
   };
@@ -331,6 +328,9 @@ int preprocess_run_instance (const gchar* logpath, GVariant* channel_modes) {
     g_printf("Unable to open output file %s\n", logpath);
     return -1;
   }
+
+  // create postprocess and radio threads
+  
 
   if ((ret = sr_session_start(sr_session)) != SR_OK) {
     printf("Could not start session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
