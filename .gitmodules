@@ -1,0 +1,16 @@
+[submodule "foreign/flocklab"]
+	path = foreign/flocklab
+	url = https://gitlab.ethz.ch/tec/public/flocklab/flocklab
+[submodule "foreign/iot-testbed"]
+	path = foreign/iot-testbed
+	url = https://github.com/iot-chalmers/iot-testbed
+	branch = ramdisk
+[submodule "foreign/contiki-ng"]
+	path = foreign/contiki-ng
+	url = https://github.com/contiki-ng/contiki-ng
+[submodule "foreign/libsigrok"]
+	path = foreign/libsigrok
+	url = git://sigrok.org/libsigrok
+[submodule "raspi/gpio-tracer/external/cc1101-spidev"]
+	path = raspi/gpio-tracer/external/cc1101-spidev
+	url = https://github.com/HappyEnt/cc1101-spidev.git

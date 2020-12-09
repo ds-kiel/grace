@@ -16,14 +16,11 @@
 static gboolean start = FALSE;
 static gboolean stop = FALSE;
 static gchar* logpath = NULL;
-static gboolean wait_sync = FALSE;
-
 
 static const GOptionEntry entries[] = {
   {"start",      's'    , 0, G_OPTION_ARG_NONE,     &start      , "Tell daemon to start gpio tracing",                 NULL},
   {"stop",       'k'    , 0, G_OPTION_ARG_NONE,     &stop       , "Tell daemon to start gpio tracing",                 NULL},
   {"logpath",    'l'    , 0, G_OPTION_ARG_FILENAME, &logpath    , "path where the trace logs should be stored ",       NULL},
-  {"sync",       'S'    , 0, G_OPTION_ARG_NONE,     &wait_sync  , "wait for a sync pulse from a sync node",            NULL},
   { NULL }
 };
 
@@ -97,11 +94,9 @@ static void on_name_appeared(GDBusConnection *connection, const gchar *name,
     } else {
       _logpath = "/tmp/gpio-default-log.csv"; // TODO don't output if no logpath is passed
     }
-    parameters = g_variant_new("(sb)", _logpath, wait_sync); // TODO use _ prefix for 'globals'
+    parameters = g_variant_new("(s)", _logpath); // TODO use _ prefix for 'globals'
   } else if(stop) {
     method = "Stop";
-
-    parameters = g_variant_new("(b)", wait_sync);
   }
 
   g_printf("%s/n", daemon_call_control_interface_method(connection, name_owner, method, parameters, &error));

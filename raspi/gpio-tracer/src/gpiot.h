@@ -11,11 +11,6 @@
 /* |       5 |    -     |              5 | */
 /* --------------------------------------- */
 
-/* typedef enum return_code { */
-/*   LA_SUCCESS = 0, */
-/*   LA_ERROR = -1, */
-/* } */
-
 typedef enum gpiot_daemon_state {
   GPIOTD_IDLE = 1,
   GPIOTD_COLLECTING = 2,

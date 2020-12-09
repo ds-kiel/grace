@@ -1,4 +1,4 @@
-#include <la_sigrok.h>
+#include <preprocess.h>
 
 #include <output.h>
 #include <types.h>
@@ -12,10 +12,6 @@
 
 static const guint8 _receiver_channel = 1; // CH2 is used for the receiver signal
 static gboolean _running = FALSE;
-
-static gboolean _collect_samples;
-static gboolean _wait_for_sync;
-static enum action _expected_action;
 
 static struct sr_context* sr_cntxt;
 struct sr_session* sr_session;
@@ -38,9 +34,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                                             void *cb_data) {
   static gboolean initial_df_logic_packet = TRUE;
   static uint8_t last;
-  static guint64 last_transmitter_timestamp;
   /* static guint64 first_sync_timestamp; */
-  static guint8 sync_pulse_count;
   static guint64 sample_count;
 
 
@@ -49,104 +43,47 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
       struct sr_datafeed_header *payload = (struct sr_datafeed_header*) packet->payload;
       printf("got datafeed header: feed version %d, startime %lu\n", payload->feed_version, payload->starttime.tv_usec);
       initial_df_logic_packet = TRUE;
-      last_transmitter_timestamp = 0;
-      sync_pulse_count = 0;
       sample_count = 0;
       _nsec_per_sample = (1.0/(double)_samplerate)*1e9;
       break;
     }
     case SR_DF_LOGIC: {
       struct sr_datafeed_logic *payload = (struct sr_datafeed_logic*) packet->payload;
-      uint8_t* dataArray = payload->data;
+      uint8_t* data = payload->data;
 
       if(initial_df_logic_packet) {
-        last = dataArray[0]&_active_channel_mask;
+        last = data[0]&_active_channel_mask;
         initial_df_logic_packet = false;
       }
 
+      last = data[payload->length-1];
+      
       /* printf("Got datafeed payload of length %" PRIu64 " Unit size is %" PRIu16 " byte\n", payload->length, payload->unitsize); */
       for(size_t i = 0; i < payload->length; i++) {
-        if((dataArray[i]&_active_channel_mask) != last) {
+        if((data[i]&_active_channel_mask) != last) {
           for (size_t k = 0; k < _channel_count ; k++) {
             uint8_t k_channel_mask = (1<<_channels[k].channel);
-            int8_t delta = (last&k_channel_mask) - (dataArray[i]&k_channel_mask);
+            int8_t delta = (last&k_channel_mask) - (data[i]&k_channel_mask);
             uint8_t state;
             if(delta) {
-              // evaluate data from receiver
               if(k == _receiver_channel) {
-                if (_wait_for_sync) {
-                  if(delta < 1) { // Rising signal -> save timestamp
-                    last_transmitter_timestamp = timestamp_from_samples(sample_count);
-                  } else { // Falling signal -> check length of pulse
-                    if(last_transmitter_timestamp > 0) { // atleast one rising signal had to previously happen
-                      guint64 current_transmitter_timestamp;
-                      guint64 difference_in_microseconds;
-
-                      current_transmitter_timestamp = timestamp_from_samples(sample_count);
-                      difference_in_microseconds = (current_transmitter_timestamp - last_transmitter_timestamp)/1e3;
-                      if (difference_in_microseconds > TRANSMITTER_SYNC_LENGTH/TRANSMITTER_SYNC_LENGTH_TOLERANCE
-                          && difference_in_microseconds < TRANSMITTER_SYNC_LENGTH*TRANSMITTER_SYNC_LENGTH_TOLERANCE) {
-
-                        /* if(sync_pulse_count <= 0) */
-                        /*   first_sync_timestamp = current_transmitter_timestamp; */
-
-                        sync_pulse_count++;
-                        g_printf("Got %dnth sync pulse, difference_in_microseconds: %" PRIu64 "\n", sync_pulse_count, difference_in_microseconds);
-
-                        if(sync_pulse_count >= TRANSMITTER_SYNC_PULSES) {
-                          sync_pulse_count = 0;
-                          if(_expected_action == LA_SIGROK_ACTION_START) {
-                            /* sample_count = 0; // Timestamps of sample will start from this point off */
-                            /* timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = first_sync_timestamp}; */ // use first edge of the pulse series for timestamp
-                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = timestamp_from_samples(sample_count)}; // use last edge of the pulse series for timestamp
-                            write_comment("Trace Start");
-                            write_sample(data);
-                            _collect_samples = TRUE;
-                            g_printf("Start recording samples now!\n");
-
-                          } else if (_expected_action == LA_SIGROK_ACTION_STOP) {
-
-                            /* timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = first_sync_timestamp}; */
-                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = timestamp_from_samples(sample_count)};
-                            write_sample(data);
-                            write_comment("Trace Stop");
-                            g_printf("Stop recording samples now!\n");
-
-                            _collect_samples = FALSE;
-                            la_sigrok_do_stop_instance();
-                          } else if (_expected_action == LA_SIGROK_ACTION_TIMESTAMP) {
-
-                            timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = timestamp_from_samples(sample_count)};
-                            write_sample(data);
-                            g_printf("Writing intermediate timestamp!\n");
-
-                          }
-                          _wait_for_sync = FALSE;
-                        }
-                      } else {
-                        sync_pulse_count = 0;
-                        g_printf("decline pulse, difference_in_microseconds: %" PRIu64 "\n", difference_in_microseconds);
-                      }
-                    }
-                  }
-                }
-
-              // evaluate data from other chanenls
-              } else {
-                /* g_printf("Some channel changed state \n"); */
-                if((_channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
-                  state = 0;
-                } else if (_channels[k].mode & MATCH_RISING){  // rising signal
-                  state = 1;
-                }
-                if (_collect_samples) {
-                  timestamp_t data = {.channel = _channels[k].channel, .state = state, .time = timestamp_from_samples(sample_count)};
+                if(delta < 1) { // Rising signal -> save timestamp
+                  timestamp_t data = {.channel = _receiver_channel, .state = 1, .time = timestamp_from_samples(sample_count)}; // use last edge of the pulse series for timestamp
                   write_sample(data);
+                  write_comment("Trace Stop");
                 }
               }
+            } else { // evaluate data from other channels
+              /* g_printf("Some channel changed state \n"); */
+              if((_channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
+                state = 0;
+              } else if (_channels[k].mode & MATCH_RISING){  // rising signal
+                state = 1;
+              }
+              timestamp_t data = {.channel = _channels[k].channel, .state = state, .time = timestamp_from_samples(sample_count)};
+              write_sample(data);
             }
           }
-          last = dataArray[i]&_active_channel_mask;
         }
         sample_count++;
       }
@@ -162,7 +99,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
   }
 }
 
-static int la_sigrok_do_stop_instance() {
+int preprocess_stop_instance() {
   int ret;
 
   // uninitialize sigrok
@@ -175,22 +112,7 @@ static int la_sigrok_do_stop_instance() {
   return 0;
 }
 
-
-/* return -1 if cleanup fails */
-int la_sigrok_stop_instance(gboolean wait_sync) {
-  if (wait_sync) {
-    g_printf("Wait for sync pulse before stopping instance!\n");
-    _expected_action = LA_SIGROK_ACTION_STOP;
-    _wait_for_sync = TRUE;
-    return 1;
-  }
-
-  _wait_for_sync = FALSE;
-  g_printf("Stopping instance immediately");
-  return la_sigrok_do_stop_instance();
-}
-
-static int la_sigrok_kill_instance() {
+static int preprocess_kill_instance() {
   int ret;
 
   if(_running || sr_session == NULL) {
@@ -223,23 +145,13 @@ void session_stopped_callback(void* data) {
   g_printf("Session has stoppped!\n");
   close_output_file();
   _running = FALSE;
-  la_sigrok_kill_instance();
+  preprocess_kill_instance();
 }
 
 
-// returns 0 on sucess, -1 on error (for example already waiting for another sync)
-int la_sigrok_announce_sync() {
-  if (_wait_for_sync)
-    return -1;
-
-  _wait_for_sync = TRUE;
-  _expected_action = LA_SIGROK_ACTION_TIMESTAMP;
-}
-
-
-// ownership of channel_modes is transfered to la_sigrok_init_instance(), so the GVariant should not be unreffed by the callee!
+// ownership of channel_modes is transfered to preprocess_init_instance(), so the GVariant should not be unreffed by the callee!
 // returns -1 on failure. returns 1 if session already exists
-static int la_sigrok_init_instance(guint32 samplerate)
+static int preprocess_init_instance(guint32 samplerate)
 {
   g_printf("Initializing sigrok instance\n");
 
@@ -372,15 +284,11 @@ static int la_sigrok_init_instance(guint32 samplerate)
   return 0;
 }
 
-gboolean la_sigrok_waiting_sync() {
-  return _wait_for_sync;
-}
-
-gboolean la_sigrok_running() {
+gboolean preprocess_running() {
   return _running;
 }
 
-int la_sigrok_run_instance (gboolean wait_sync, const gchar* logpath, GVariant* channel_modes) {
+int preprocess_run_instance (const gchar* logpath, GVariant* channel_modes) {
   int ret;
 
   if(_running) {
@@ -388,7 +296,7 @@ int la_sigrok_run_instance (gboolean wait_sync, const gchar* logpath, GVariant* 
     return 1;
   }
 
-  if (la_sigrok_init_instance(8000000) < 0) {
+  if (preprocess_init_instance(8000000) < 0) {
     g_printf("Could not initialize sigrok instance!\n");
     return -1;
   };
@@ -423,18 +331,6 @@ int la_sigrok_run_instance (gboolean wait_sync, const gchar* logpath, GVariant* 
     g_printf("Unable to open output file %s\n", logpath);
     return -1;
   }
-
-  if (wait_sync) {
-      g_printf("Ok! I will start when sync pulse arrives!\n");
-      _wait_for_sync = TRUE;
-      _expected_action = LA_SIGROK_ACTION_START;
-      _collect_samples = FALSE;
-  } else {
-    // otherwise start collecting samples immediately
-    _wait_for_sync = FALSE;
-    _collect_samples = TRUE;
-  }
-
 
   if ((ret = sr_session_start(sr_session)) != SR_OK) {
     printf("Could not start session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));

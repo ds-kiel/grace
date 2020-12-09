@@ -2,7 +2,7 @@
 
 #include "gpiot.h"
 
-#include <la_sigrok.h>
+#include <preprocess.h>
 #include <types.h>
 #include <inttypes.h>
 
@@ -24,15 +24,9 @@ static const gchar introspection_xml[] =
   "    <method name='Start'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
   "      <arg type='s' name='logPath' direction='in'/>"
-  "      <arg type='b' name='waitForSync' direction='in'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
   "    <method name='Stop'>"
-  "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
-  "      <arg type='b' name='waitForSync' direction='in'/>"
-  "      <arg type='s' name='result' direction='out'/>"
-  "    </method>"
-  "    <method name='Sync'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
@@ -65,12 +59,11 @@ static void handle_method_call(GDBusConnection *connnection,
   if (!g_strcmp0(method_name, "Start")) {
     int ret;
     const gchar *logpath;
-    gboolean wait_sync;
 
     g_printf("Invocation: Start\n");
 
-    g_variant_get(parameters, "(&sb)", &logpath, &wait_sync);
-    g_printf("Parameters: %s %c\n", logpath, wait_sync);
+    g_variant_get(parameters, "(&s)", &logpath);
+    g_printf("Parameters: %s \n", logpath);
 
     GVariantBuilder* channel_modes_builder = g_variant_builder_new(G_VARIANT_TYPE("a(yy)"));
     GVariant* channel_modes;
@@ -81,7 +74,7 @@ static void handle_method_call(GDBusConnection *connnection,
     g_variant_builder_unref(channel_modes_builder);
 
     g_print(g_variant_print(channel_modes,TRUE));
-    if ((ret = la_sigrok_run_instance(wait_sync, logpath, channel_modes)) < 0) {
+    if ((ret = preprocess_run_instance(logpath, channel_modes)) < 0) {
       result = g_strdup_printf("Unable to run instance");
     } else if (ret > 0) {
       result = g_strdup_printf("Instance already running");
@@ -92,18 +85,11 @@ static void handle_method_call(GDBusConnection *connnection,
     g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
 
   } else if (!g_strcmp0(method_name, "Stop")) {
-    gboolean wait_sync;
-
     g_printf("Invocation: Stop\n");
 
-    g_variant_get(parameters, "(b)", &wait_sync);
-    g_printf("got: %c\n", wait_sync);
-
-    if (la_sigrok_running()) {
+    if (preprocess_running()) {
       int ret;
-      if ((ret = la_sigrok_stop_instance(wait_sync)) >= 1) {
-        result = g_strdup_printf("Waiting for sync");
-      } else if (ret == 0) {
+      if ((ret = preprocess_stop_instance()) >= 0) {
         result = g_strdup_printf("Stopped");
       } else {
         result = g_strdup_printf("Could not stop instance");
@@ -114,22 +100,12 @@ static void handle_method_call(GDBusConnection *connnection,
     g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
   } else if (!g_strcmp0(method_name, "getState")) {
     gpiot_daemon_state_t state;
-    if(la_sigrok_running() && la_sigrok_waiting_sync()) state = GPIOTD_PENDING_SYNC; // TODO spaghetti code. Handle some other way
-    else if (la_sigrok_running()) state = GPIOTD_COLLECTING;
+    if(preprocess_running())
+      state = GPIOTD_COLLECTING;
     else state = GPIOTD_IDLE;
 
     g_dbus_method_invocation_return_value(invocation, g_variant_new("(i)", state));
-  } else if (!g_strcmp0(method_name, "Sync")) {
-    if(la_sigrok_running()) {
-      if(!la_sigrok_waiting_sync()) {
-        la_sigrok_announce_sync();
-        result = g_strdup_printf("Expecting Sync");
-      }
-    }
-    g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
   }
-
-
 }
 
 static GVariant *handle_get_property(GDBusConnection *connection,
@@ -186,7 +162,7 @@ int main(int argc, char *argv[])
   main_context  =  g_main_context_new();
   g_main_context_push_thread_default(main_context);
 
-  /* if(la_sigrok_init_instance(8000000) < 0) { */
+  /* if(preprocess_init_instance(8000000) < 0) { */
   /*   g_printf("Could not initialize sigrok gpiot instance!\n"); */
   /*   goto cleanup; */
   /* } */

@@ -2,28 +2,15 @@
 See [stackoverflow](https://serverfault.com/questions/892465/starting-systemd-services-sharing-a-session-d-bus-on-headless-system)
 
 # Dependencies
-## general dependencies
-- `pigpio`
-- `libsigrok`
-- `glib`
-- `python3`
-
 ### Installation on Raspbian
 ```
   apt update
-  apt install pigpio libsigrok-dev libglib2.0-dev python3
+  apt install libsigrok-dev libglib2.0-dev python3
 ```
 
-## Python dependencies:
-- `flask-restful`
-- `dbus-python`
-- `requests`
-
-### Installation on Raspbian
 ```
   pip3 install flask-restful dbus-python requests
 ```
-
 
 # Installation - System bus
 `/ssh:user@raspiot|sudo:root@raspiot:/usr/share/dbus-1/system-services/org.cau.gpiot.service`
@@ -41,7 +28,7 @@ See [stackoverflow](https://serverfault.com/questions/892465/starting-systemd-se
 Raspbian stretch still packages an old version of libsigrok. A new version has to be build on the target system
 and be included with the binary. The fx2lafw firmware also has to be build an installed.
 ```
-  sudo apt -y install libftdi1-dev libzip-dev libserialport-dev pigpio python3 python3-pip sdcc libsigrok-dev libglib2.0-dev cmake
+  sudo apt -y install libftdi1-dev libzip-dev libserialport-dev python3 python3-pip sdcc libsigrok-dev libglib2.0-dev cmake
 
   sudo pip3 install flask-restful dbus-python requests
 ```
