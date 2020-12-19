@@ -1,4 +1,3 @@
-
 #include <postprocess.h>
 
 #include <stdlib.h>
@@ -20,7 +19,7 @@ static gpointer postprocess_thread_func(gpointer data) {
   }
 }
 
-int postprocess_init() {
+int postprocess_init(GAsyncQueue* trace_queue) {
   // TODO pass reference to shared memory segment or threaded queue or whatever ...
   g_thread_new("postprocess", postprocess_thread_func, NULL);
   printf("Initializing postprocess thread!\n");
