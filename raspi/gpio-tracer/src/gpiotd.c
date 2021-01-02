@@ -6,7 +6,7 @@
 #include <postprocess.h>
 #include <types.h>
 #include <inttypes.h>
-
+#include <radio-master.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <gio/gio.h>
@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 static GDBusNodeInfo* introspection_data = NULL;
+static GAsyncQueue *trace_queue;
 
 /* Introspection data for the service we are exporting */
 static const gchar introspection_xml[] =
@@ -46,7 +47,20 @@ static const gchar introspection_xml[] =
   "  </interface>"
   "</node>";
 
+static int start_tasks(GVariant* channel_modes) {
+  trace_queue = g_async_queue_new();
 
+  preprocess_init(channel_modes, trace_queue);
+  postprocess_init("/usr/testbed/sample_data/test1.csv", trace_queue);
+  radio_master_init();
+}
+
+static int stop_tasks() {
+  preprocess_stop_instance();
+  g_async_queue_unref(trace_queue);
+}
+
+// dbus handlers
 static void handle_method_call(GDBusConnection *connnection,
                                const gchar *sender, const gchar *object_path,
                                const gchar *interface_name,
@@ -75,7 +89,7 @@ static void handle_method_call(GDBusConnection *connnection,
     g_variant_builder_unref(channel_modes_builder);
 
     g_print(g_variant_print(channel_modes,TRUE));
-    if ((ret = preprocess_run_instance(logpath, channel_modes)) < 0) {
+    if ((ret = start_tasks(channel_modes)) < 0) {
       result = g_strdup_printf("Unable to run instance");
     } else if (ret > 0) {
       result = g_strdup_printf("Instance already running");
@@ -90,7 +104,7 @@ static void handle_method_call(GDBusConnection *connnection,
 
     if (preprocess_running()) {
       int ret;
-      if ((ret = preprocess_stop_instance()) >= 0) {
+      if ((ret = stop_tasks()) >= 0) {
         result = g_strdup_printf("Stopped");
       } else {
         result = g_strdup_printf("Could not stop instance");
@@ -152,6 +166,7 @@ static void on_name_lost(GDBusConnection* connection, const gchar* name, gpointe
   g_printf("lost dbus name %s\n", name);
 }
 
+
 int main(int argc, char *argv[])
 {
   GMainContext* main_context;
@@ -163,18 +178,20 @@ int main(int argc, char *argv[])
   main_context  =  g_main_context_new();
   g_main_context_push_thread_default(main_context);
 
-  /* if(preprocess_init_sigrok(8000000) < 0) { */
-  /*   g_printf("Could not initialize sigrok gpiot instance!\n"); */
-  /*   goto cleanup; */
-  /* } */
 
   introspection_data = g_dbus_node_info_new_for_xml(introspection_xml, NULL);
   g_assert(introspection_data != NULL);
 
   // take name from other connection, but also allow others to take this connection
   flags = G_BUS_NAME_OWNER_FLAGS_REPLACE | G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT;
+  owner_id = g_bus_own_name(G_BUS_TYPE_SESSION, "org.cau.gpiot", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL);
   g_printf("Setup gpio pin for gps flooding!\n");
-  postprocess_init();
+
+
+  /* if(preprocess_init_sigrok(8000000) < 0) { */
+  /*   g_printf("Could not initialize sigrok gpiot instance!\n"); */
+  /*   goto cleanup; */
+  /* } */
 
   while (1) { // TODO main loop
     g_main_context_iteration(main_context, TRUE);

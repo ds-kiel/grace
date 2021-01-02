@@ -24,6 +24,8 @@ static struct channel_mode* _channels;
 static guint32 _samplerate;
 static double _nsec_per_sample; // TODO try long double performance
 
+static GAsyncQueue* _trace_queue;
+
 static inline guint64 timestamp_from_samples(guint64 sample_count) {
   return (guint64) _nsec_per_sample * sample_count;
 }
@@ -56,8 +58,6 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
         initial_df_logic_packet = false;
       }
 
-      last = data[payload->length-1];
-      
       /* printf("Got datafeed payload of length %" PRIu64 " Unit size is %" PRIu16 " byte\n", payload->length, payload->unitsize); */
       for(size_t i = 0; i < payload->length; i++) {
         if((data[i]&_active_channel_mask) != last) {
@@ -68,23 +68,33 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
             if(delta) {
               if(k == _receiver_channel) {
                 if(delta < 1) { // Rising signal -> save timestamp
-                  trace_t data = {.channel = _receiver_channel, .state = 1, .timestamp_ns = timestamp_from_samples(sample_count)}; // use last edge of the pulse series for timestamp
-                  write_sample(data);
-                  write_comment("Trace Stop");
+                  trace_t *data = malloc(sizeof(trace_t));
+                  data->channel = _receiver_channel;
+                  data->state = 1;
+                  data->timestamp_ns = timestamp_from_samples(sample_count); // use last edge of the pulse series for timestamp
+
+                  g_async_queue_push(_trace_queue, data);
                 }
+              } else { // evaluate data from other channels
+                /* g_printf("Some channel changed state \n"); */
+
+                if((_channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
+                  state = 0;
+                } else if (_channels[k].mode & MATCH_RISING) {  // rising signal
+                  state = 1;
+                }
+
+                trace_t *data = malloc(sizeof(trace_t));
+                data->channel = _channels[k].channel;
+                data->state = state;
+                data->timestamp_ns = timestamp_from_samples(sample_count); // use last edge of the pulse series for timestamp
+
+                g_async_queue_push(_trace_queue, data);
               }
-            } else { // evaluate data from other channels
-              /* g_printf("Some channel changed state \n"); */
-              if((_channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
-                state = 0;
-              } else if (_channels[k].mode & MATCH_RISING){  // rising signal
-                state = 1;
-              }
-              trace_t data = {.channel = _channels[k].channel, .state = state, .timestamp_ns = timestamp_from_samples(sample_count)};
-              write_sample(data);
             }
           }
         }
+        last = data[i]&_active_channel_mask;
         sample_count++;
       }
       break;
@@ -285,7 +295,7 @@ gboolean preprocess_running() {
   return _running;
 }
 
-int preprocess_run_instance (const gchar* logpath, GVariant* channel_modes) {
+int preprocess_init(GVariant* channel_modes, GAsyncQueue *trace_queue) {
   int ret;
 
   if(_running) {
@@ -324,13 +334,8 @@ int preprocess_run_instance (const gchar* logpath, GVariant* channel_modes) {
   g_variant_iter_free(iter);
   g_variant_unref(channel_modes);
 
-  if (open_output_file(logpath, TRUE) < 0) {
-    g_printf("Unable to open output file %s\n", logpath);
-    return -1;
-  }
-
-  // create postprocess and radio threads
-  
+  // set queue
+  _trace_queue = trace_queue;
 
   if ((ret = sr_session_start(sr_session)) != SR_OK) {
     printf("Could not start session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));

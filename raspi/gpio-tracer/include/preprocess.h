@@ -10,7 +10,7 @@ struct channel_mode {
 };
 
 /* --- proto --- */
-int preprocess_run_instance(const gchar* logpath, GVariant* channel_modes);
+int preprocess_init(GVariant* channel_modes, GAsyncQueue *trace_queue);
 int preprocess_stop_instance();
 int preprocess_announce_sync();
 

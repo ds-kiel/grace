@@ -6,7 +6,9 @@ See [stackoverflow](https://serverfault.com/questions/892465/starting-systemd-se
 ```
   apt update
   apt install libsigrok-dev libglib2.0-dev python3
+  apt install default-dbus-session-bus # Needed for running dbus-user sessions. Only needed for development
 ```
+
 
 ```
   pip3 install flask-restful dbus-python requests
@@ -79,5 +81,6 @@ Start tracing with sigrok and save traces in a log file:
 
 ```
     systemctl restart dbus-org.cau.gpiot.service && journalctl -u dbus-org.cau.gpiot -f
+    lsyncd -rsyncssh ./gpio-tracer/ uni-rasp-03-new-raspbian /usr/testbed/gpio-tracer/ -nodaemon
     ./gpiotc --start --device=sigrok --logpath=/home/user/logs/analyse/sigrok-count-timestamps-1hz.csv && sleep 20 && ./gpiotc --stop --device=sigrok
 ```

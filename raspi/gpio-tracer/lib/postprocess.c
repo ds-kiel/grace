@@ -10,19 +10,28 @@ static const gchar* output_file_name;
 static FILE *fp;
 
 static size_t buf_index = 0;
+static GAsyncQueue* _trace_queue;
 trace_t* write_buffer;
 
 static gpointer postprocess_thread_func(gpointer data) {
   while(1) {
-    sleep(1);
-    printf("I am the postprocessor and I am a diligent thread :-)!\n");
+    trace_t *sample = g_async_queue_pop(_trace_queue);
+    g_printf("Got sample from channel %d\n", sample->channel);
   }
 }
 
-int postprocess_init(GAsyncQueue* trace_queue) {
+int postprocess_init(const gchar* logpath, GAsyncQueue* trace_queue) {
   // TODO pass reference to shared memory segment or threaded queue or whatever ...
+  g_printf("Initializing postprocess thread!\n");
+
+  _trace_queue = trace_queue;
+
+  if (open_output_file(logpath, TRUE) < 0) {
+    g_printf("Unable to open output file %s\n", logpath);
+    return -1;
+  }
+
   g_thread_new("postprocess", postprocess_thread_func, NULL);
-  printf("Initializing postprocess thread!\n");
 }
 
 /* // should return -1 if failed */

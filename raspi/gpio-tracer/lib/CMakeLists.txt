@@ -7,12 +7,15 @@ find_package(Threads REQUIRED)
 
 set(CMAKE_INSTALL_RPATH "$ORIGIN")
 
-add_library(analyzer preprocess.c postprocess.c radio.c)
+add_library(analyzer
+  preprocess.c postprocess.c radio_master.c radio_slave.c
+  "${PROJECT_SOURCE_DIR}/external/cc1101-spidev/cc1101.c")
 
 target_include_directories(analyzer
   PUBLIC ${LIBSIGROK_INCLUDE_DIRS}
   PUBLIC ${GLIB_INCLUDE_DIRS}
   PUBLIC "${PROJECT_SOURCE_DIR}/include"
+  PUBLIC "${PROJECT_SOURCE_DIR}/external"
   )
 
 target_link_libraries(analyzer

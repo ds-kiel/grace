@@ -6,9 +6,11 @@
 
 #define CONSTANT_SIZE_BUFFER_ENTRIES 40e6
 
-int open_output_file(const gchar* filename, gboolean overwrite);
-int postprocess_init(GAsyncQueue trace_queue);
+int postprocess_init(const gchar* logpath, GAsyncQueue* trace_queue);
+
+// TODO should be file local
 int close_output_file();
+int open_output_file(const gchar* filename, gboolean overwrite);
 
 int write_sample(trace_t sample);
 int write_comment(gchar *comment);
