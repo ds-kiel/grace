@@ -3,6 +3,7 @@
 #include <postprocess.h>
 #include <types.h>
 #include <radio.h>
+#include <configuration.h>
 
 #include <libsigrok/libsigrok.h>
 #include <glib/gprintf.h>
@@ -10,8 +11,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-static const guint8 _receiver_channel = 1; // CH2 is used for the receiver signal
 static gboolean _running = FALSE;
+static gboolean node_is_slave = FALSE;
 
 static struct sr_context* sr_cntxt;
 struct sr_session* sr_session;
@@ -25,9 +26,11 @@ static guint32 _samplerate;
 static double _nsec_per_sample; // TODO try long double performance
 
 static GAsyncQueue* _trace_queue;
+static GAsyncQueue* _timestamp_unref_queue;
+static GAsyncQueue* _timestamp_ref_queue;
 
-static inline guint64 timestamp_from_samples(guint64 sample_count) {
-  return (guint64) _nsec_per_sample * sample_count;
+static inline timestamp_t timestamp_from_samples(guint64 sample_count) {
+  return (timestamp_t) _nsec_per_sample * sample_count;
 }
 
 
@@ -36,7 +39,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                                             void *cb_data) {
   static gboolean initial_df_logic_packet = TRUE;
   static uint8_t last;
-  /* static guint64 first_sync_timestamp; */
+  /* static timestamp_t first_sync_timestamp; */
   static guint64 sample_count;
 
 
@@ -55,29 +58,40 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
 
       if(initial_df_logic_packet) {
         last = data[0]&_active_channel_mask;
-        initial_df_logic_packet = false;
+        initial_df_logic_packet = FALSE;
       }
 
-      /* printf("Got datafeed payload of length %" PRIu64 " Unit size is %" PRIu16 " byte\n", payload->length, payload->unitsize); */
+      size_t changes_in_payload = 0;
       for(size_t i = 0; i < payload->length; i++) {
+        /* printf("Got datafeed payload of length %" PRIu64 " Unit size is %" PRIu16 " byte\n", payload->length, payload->unitsize); */
         if((data[i]&_active_channel_mask) != last) {
           for (size_t k = 0; k < _channel_count ; k++) {
             uint8_t k_channel_mask = (1<<_channels[k].channel);
             int8_t delta = (last&k_channel_mask) - (data[i]&k_channel_mask);
             uint8_t state;
             if(delta) {
-              if(k == _receiver_channel) {
+              if(_channels[k].channel == RECEIVER_CHANNEL) {
                 if(delta < 1) { // Rising signal -> save timestamp
-                  trace_t *data = malloc(sizeof(trace_t));
-                  data->channel = _receiver_channel;
-                  data->state = 1;
-                  data->timestamp_ns = timestamp_from_samples(sample_count); // use last edge of the pulse series for timestamp
 
-                  g_async_queue_push(_trace_queue, data);
+                  // In case this node is configured as slave we listen for incoming signals on the receiver channel and try to match them
+                  // with a packet from the RX fifo queue through the radio-slave module by pushing our timestamped packet into the unref queue
+                  if (node_is_slave) {
+                    timestamp_t *timestamp_h = malloc(sizeof(timestamp_t));
+                    *timestamp_h = timestamp_from_samples(sample_count);
+                    g_async_queue_push(_timestamp_unref_queue, timestamp_h);
+                  } else { // If our node acts as a master instead the radio-master emits the reference signals itself, so we will pop from the unref queue
+                    timestamp_pair_t *timestamp_pair_ref = g_async_queue_try_pop(_timestamp_unref_queue);
+                    // TODO this is blocking, there should never be a case where we record a receiver signal without a element in the queue. Nevertheless a maximum delay
+                    // until the signal is unblocked a gain should be added.
+                    if (timestamp_pair_ref != NULL) {
+                      timestamp_pair_ref->local_timestamp_ns = timestamp_from_samples(sample_count);
+                      g_async_queue_push(_timestamp_ref_queue, timestamp_pair_ref);
+                    }
+                  }
                 }
               } else { // evaluate data from other channels
-                /* g_printf("Some channel changed state \n"); */
-
+                g_printf("Channel %d changed state \n", _channels[k].channel);
+                changes_in_payload++;
                 if((_channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
                   state = 0;
                 } else if (_channels[k].mode & MATCH_RISING) {  // rising signal
@@ -97,6 +111,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
         last = data[i]&_active_channel_mask;
         sample_count++;
       }
+
       break;
     }
     case SR_DF_END: {
@@ -295,7 +310,7 @@ gboolean preprocess_running() {
   return _running;
 }
 
-int preprocess_init(GVariant* channel_modes, GAsyncQueue *trace_queue) {
+int preprocess_init(GVariant* channel_modes, GAsyncQueue *trace_queue, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
   int ret;
 
   if(_running) {
@@ -303,7 +318,7 @@ int preprocess_init(GVariant* channel_modes, GAsyncQueue *trace_queue) {
     return 1;
   }
 
-  if (preprocess_init_sigrok(8000000) < 0) {
+  if (preprocess_init_sigrok(4000000) < 0) {
     g_printf("Could not initialize sigrok instance!\n");
     return -1;
   };
@@ -336,6 +351,8 @@ int preprocess_init(GVariant* channel_modes, GAsyncQueue *trace_queue) {
 
   // set queue
   _trace_queue = trace_queue;
+  _timestamp_unref_queue = timestamp_unref_queue;
+  _timestamp_ref_queue = timestamp_ref_queue;
 
   if ((ret = sr_session_start(sr_session)) != SR_OK) {
     printf("Could not start session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));

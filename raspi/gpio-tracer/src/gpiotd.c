@@ -15,7 +15,9 @@
 #include <unistd.h>
 
 static GDBusNodeInfo* introspection_data = NULL;
-static GAsyncQueue *trace_queue;
+static GAsyncQueue *_trace_queue; // store queues so we can later safely unref them
+static GAsyncQueue *_timestamp_unref_queue;
+static GAsyncQueue *_timestamp_ref_queue;
 
 /* Introspection data for the service we are exporting */
 static const gchar introspection_xml[] =
@@ -48,16 +50,23 @@ static const gchar introspection_xml[] =
   "</node>";
 
 static int start_tasks(GVariant* channel_modes) {
-  trace_queue = g_async_queue_new();
+  _trace_queue           = g_async_queue_new();
+  _timestamp_unref_queue = g_async_queue_new();
+  _timestamp_ref_queue   = g_async_queue_new();
 
-  preprocess_init(channel_modes, trace_queue);
-  postprocess_init("/usr/testbed/sample_data/test1.csv", trace_queue);
-  radio_master_init();
+
+  // TODO it is not a particular nice design that with master/slave support the preprocess needs both a reference to the ref and unref queue
+  // while only when in master mode the module needs both references.
+  preprocess_init(channel_modes, _trace_queue, _timestamp_unref_queue, _timestamp_ref_queue);
+  postprocess_init("/usr/testbed/sample_data/test1.csv", _trace_queue, _timestamp_ref_queue);
+  radio_master_init(_timestamp_unref_queue, _timestamp_ref_queue);
 }
 
 static int stop_tasks() {
   preprocess_stop_instance();
-  g_async_queue_unref(trace_queue);
+  g_async_queue_unref(_trace_queue          );
+  g_async_queue_unref(_timestamp_unref_queue);
+  g_async_queue_unref(_timestamp_ref_queue  );
 }
 
 // dbus handlers
@@ -85,6 +94,12 @@ static void handle_method_call(GDBusConnection *connnection,
     g_variant_builder_add(channel_modes_builder, "(yy)", 0, MATCH_FALLING | MATCH_RISING);
     g_variant_builder_add(channel_modes_builder, "(yy)", 1, MATCH_FALLING | MATCH_RISING);
     g_variant_builder_add(channel_modes_builder, "(yy)", 2, MATCH_FALLING | MATCH_RISING);
+    g_variant_builder_add(channel_modes_builder, "(yy)", 3, MATCH_FALLING | MATCH_RISING);
+    g_variant_builder_add(channel_modes_builder, "(yy)", 4, MATCH_FALLING | MATCH_RISING);
+    g_variant_builder_add(channel_modes_builder, "(yy)", 5, MATCH_FALLING | MATCH_RISING);
+    g_variant_builder_add(channel_modes_builder, "(yy)", 6, MATCH_FALLING | MATCH_RISING);
+    g_variant_builder_add(channel_modes_builder, "(yy)", 7, MATCH_FALLING | MATCH_RISING);
+
     channel_modes = g_variant_new("a(yy)", channel_modes_builder);
     g_variant_builder_unref(channel_modes_builder);
 

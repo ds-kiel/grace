@@ -4,9 +4,7 @@
 #include "types.h"
 #include <glib.h>
 
-#define CONSTANT_SIZE_BUFFER_ENTRIES 40e6
-
-int postprocess_init(const gchar* logpath, GAsyncQueue* trace_queue);
+int postprocess_init(const gchar* logpath, GAsyncQueue* trace_queue, GAsyncQueue* timestamp_ref_queue);
 
 // TODO should be file local
 int close_output_file();
