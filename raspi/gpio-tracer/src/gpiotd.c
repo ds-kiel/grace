@@ -67,9 +67,9 @@ static int start_tasks(GVariant* channel_modes, const gchar* nodeType) {
     radio_master_init(_timestamp_unref_queue, _timestamp_ref_queue);
   } else if (!(strcmp("slave", nodeType))) {
     radio_slave_init(_timestamp_unref_queue, _timestamp_ref_queue);
-    sleep(2);
     preprocess_init(channel_modes, _trace_queue, _timestamp_unref_queue, _timestamp_ref_queue);
     postprocess_init("/usr/testbed/sample_data/test1.csv", _trace_queue, _timestamp_ref_queue);
+    radio_slave_start_reception();
   }
 
 }

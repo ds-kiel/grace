@@ -4,7 +4,7 @@
 #include <glib.h>
 #include <radio.h>
 
-#define MASTER_TIMESTAMP_PERIOD 2 // period after which a new reference timestamp should be emitted
+#define MASTER_TIMESTAMP_PERIOD 0.5 // period after which a new reference timestamp should be emitted
 
 int radio_master_init();
 

@@ -20,29 +20,32 @@ static gpointer radio_slave_thread_func(gpointer data) {
     printf("waiting for signal on logic analyzer\n");
     unref_timestamp = g_async_queue_pop(_timestamp_unref_queue);
 
+    // after reception radio moves to IDLE. We can't just stay in RX_MODE all the time because we might receive garbage data
+    while(IS_STATE(cc1101_get_chip_state(), RX_MODE)) {
+      printf("waiting for complete package reception\n");
+      g_usleep(100);
+    }
+
     // in case of high background noise the PQT might be too small and noise is mistaking as valid data.
     // This should be the only case where the FIFO overflows so we just discard all received data.
     if (IS_STATE(cc1101_get_chip_state(), RXFIFO_OVERFLOW)) {
       cc1101_command_strobe(header_command_sfrx);
-    }
-
-    bytes_avail = cc1101_rx_fifo_bytes();
-
-    if(bytes_avail > 0) { // TODO should this rather be an assertion?
-      __u8 read_buf[bytes_avail]; // TODO module should hide kernel types?
-      cc1101_read_rx_fifo(read_buf, bytes_avail);
-      // read ref timestamp from read_buf.
-      ref_timestamp_pair = malloc(sizeof(timestamp_pair_t));
-      ref_timestamp_pair->local_timestamp_ns = *unref_timestamp;
-      memcpy(&ref_timestamp_pair->reference_timestamp_ns, read_buf+1, sizeof(timestamp_t));
-      g_async_queue_push(_timestamp_ref_queue, ref_timestamp_pair);
-
-      free(unref_timestamp);
-    }
-
-    if(IS_STATE(cc1101_get_chip_state(), IDLE)) {
-      cc1101_command_strobe(header_command_sfrx);
       cc1101_set_receive();
+    } else if (IS_STATE(cc1101_get_chip_state(), IDLE)) {
+      bytes_avail = cc1101_rx_fifo_bytes();
+      if(bytes_avail == sizeof(timestamp_t) + 3) { // our packets will always have 11 bytes. Together with receiver CRC this should ensure we only process valid packets
+        __u8 read_buf[bytes_avail]; // TODO module should hide kernel types?
+        cc1101_read_rx_fifo(read_buf, bytes_avail);
+        // read ref timestamp from read_buf.
+        ref_timestamp_pair = malloc(sizeof(timestamp_pair_t));
+        ref_timestamp_pair->local_timestamp_ns = *unref_timestamp;
+        memcpy(&ref_timestamp_pair->reference_timestamp_ns, read_buf+1, sizeof(timestamp_t));
+        g_async_queue_push(_timestamp_ref_queue, ref_timestamp_pair);
+
+        free(unref_timestamp); // data moved to wrapper structure so we can free it now
+      }
+      cc1101_command_strobe(header_command_sfrx);
+      cc1101_set_receive(); // we are ready to receive another package
     }
   }
 }
@@ -74,14 +77,19 @@ int radio_slave_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_
   // frequency increment for roughly 433MHz transmission
   cc1101_set_base_freq(1091553);
 
-  int mcsm1_orig;
-  mcsm1_orig = cc1101_read_config(MCSM1);
-  cc1101_write_config(MCSM1, mcsm1_orig | 0x0C); // stay in RX after receiving a packet
-  cc1101_read_config(MCSM1);
+  /* int mcsm1_orig; */
+  /* mcsm1_orig = cc1101_read_config(MCSM1); */
+  /* cc1101_write_config(MCSM1, mcsm1_orig | 0x0C); // stay in RX after receiving a packet */
+  /* cc1101_read_config(MCSM1); */
 
   // set GDO0 GPIO function to assert transmission of sync packet
   cc1101_write_config(IOCFG0, 0x06);
 
+  // ensure device is in IDLE mode
+  cc1101_command_strobe(header_command_sidle);
+}
+
+void radio_slave_start_reception() {
   cc1101_command_strobe(header_command_sfrx);
   cc1101_set_receive();
 

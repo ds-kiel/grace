@@ -5,5 +5,6 @@
 #include <radio.h>
 
 int radio_slave_init();
+void radio_slave_start_reception();
 
 #endif /* RADIO_SLAVE_H */
