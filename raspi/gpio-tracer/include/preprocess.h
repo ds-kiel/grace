@@ -13,6 +13,7 @@ struct channel_mode {
 int preprocess_init(GVariant* channel_modes, GAsyncQueue *trace_queue, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue);
 int preprocess_stop_instance();
 int preprocess_announce_sync();
+void preprocess_set_type(const gchar* nodeType);
 
 // TODO rename to something more meaninfull
 gboolean preprocess_running();

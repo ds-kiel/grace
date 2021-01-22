@@ -21,9 +21,12 @@ static void correct_timestamps_in_range(timestamp_pair_t *ts_1, timestamp_pair_t
   corr = ((double)(ts_2->reference_timestamp_ns-ts_1->reference_timestamp_ns))/(ts_2->local_timestamp_ns - ts_1->local_timestamp_ns);
   g_printf("Fixing timestamps from %" PRIu64 " to %" PRIu64 " with corr: %f\n", ts_1->local_timestamp_ns, ts_2->local_timestamp_ns, corr);
   while ((sample = g_async_queue_pop(_trace_queue))->timestamp_ns < ts_2->local_timestamp_ns) {
-    g_fprintf(_fp, "%" PRIu64 ",%d,%d\n", sample->timestamp_ns*corr, sample->channel, sample->state);
+    timestamp_t corrected_timestamp = ts_1->reference_timestamp_ns + (sample->timestamp_ns - ts_1->local_timestamp_ns)*corr;
+    printf("New corrected timestamp: %" PRIu64 "\n");
+    g_fprintf(_fp, "%" PRIu64 ",%d,%d\n", corrected_timestamp, sample->channel, sample->state);
     free(sample);
   }
+  g_async_queue_push_front (_trace_queue, sample); // last sample should be added again so it doesn't get dropped from processing
 }
 
 static gpointer postprocess_thread_func(gpointer data) {

@@ -15,35 +15,33 @@ static gpointer radio_slave_thread_func(gpointer data) {
     int ret;
     int bytes_avail;
     timestamp_t *unref_timestamp;
-    timestamp_t ref_timestamp;
     timestamp_pair_t *ref_timestamp_pair;
 
+    printf("waiting for signal on logic analyzer\n");
     unref_timestamp = g_async_queue_pop(_timestamp_unref_queue);
 
-    while(IS_STATE(cc1101_get_chip_state(), CALIBRATE)) {
-      printf("device is calibrating. wait.\n");
-    }
-
-    bytes_avail = cc1101_rx_fifo_bytes();
+    // in case of high background noise the PQT might be too small and noise is mistaking as valid data.
+    // This should be the only case where the FIFO overflows so we just discard all received data.
     if (IS_STATE(cc1101_get_chip_state(), RXFIFO_OVERFLOW)) {
       cc1101_command_strobe(header_command_sfrx);
     }
 
-    if(bytes_avail > 0) {
+    bytes_avail = cc1101_rx_fifo_bytes();
+
+    if(bytes_avail > 0) { // TODO should this rather be an assertion?
       __u8 read_buf[bytes_avail]; // TODO module should hide kernel types?
       cc1101_read_rx_fifo(read_buf, bytes_avail);
+      // read ref timestamp from read_buf.
+      ref_timestamp_pair = malloc(sizeof(timestamp_pair_t));
+      ref_timestamp_pair->local_timestamp_ns = *unref_timestamp;
+      memcpy(&ref_timestamp_pair->reference_timestamp_ns, read_buf+1, sizeof(timestamp_t));
+      g_async_queue_push(_timestamp_ref_queue, ref_timestamp_pair);
+
+      free(unref_timestamp);
     }
 
-    // read ref timestamp from read_buf. For now 200
-    ref_timestamp = 200;
-    ref_timestamp_pair = malloc(sizeof(timestamp_pair_t));
-    ref_timestamp_pair->local_timestamp_ns = *unref_timestamp;
-    ref_timestamp_pair->reference_timestamp_ns = ref_timestamp;
-
-    g_async_queue_push(_timestamp_ref_queue, ref_timestamp_pair);
-    free(unref_timestamp);
-
-    if (IS_STATE(cc1101_get_chip_state(), IDLE)) {
+    if(IS_STATE(cc1101_get_chip_state(), IDLE)) {
+      cc1101_command_strobe(header_command_sfrx);
       cc1101_set_receive();
     }
   }
@@ -51,7 +49,11 @@ static gpointer radio_slave_thread_func(gpointer data) {
 
 int radio_slave_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
   int handle; // handle system not implemented, use structure instead for one session?
-  handle = cc1101_init("/dev/spidev0.1");
+
+  _timestamp_unref_queue  = timestamp_unref_queue;
+  _timestamp_ref_queue  = timestamp_ref_queue;
+
+  handle = cc1101_init("/dev/spidev0.0");
 
   if (handle < 0) return 0;
 
@@ -60,7 +62,7 @@ int radio_slave_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_
   }
 
   cc1101_read_config(PKTCTRL1);
-  cc1101_write_config(PKTCTRL1, 0x0C | 0x20); // 0x0C -> auto CRC Flush, 0x20 -> PTQ = 2
+  cc1101_write_config(PKTCTRL1, 0x0C | 0x40); // 0x0C -> auto CRC Flush, 0x40 -> PQT = 2*4 = 8
   cc1101_read_config(PKTCTRL1);
 
   // enable frequency synthesizer auto-calibration upon entering rx or tx state from idle
@@ -68,13 +70,24 @@ int radio_slave_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_
   mcsm0_orig = cc1101_read_config(MCSM0);
   cc1101_write_config(MCSM0, mcsm0_orig | 0x10);
   cc1101_read_config(MCSM0);
-  cc1101_set_base_freq(1091553);// frequency increment for roughly 433MHz transmission
+
+  // frequency increment for roughly 433MHz transmission
+  cc1101_set_base_freq(1091553);
+
+  int mcsm1_orig;
+  mcsm1_orig = cc1101_read_config(MCSM1);
+  cc1101_write_config(MCSM1, mcsm1_orig | 0x0C); // stay in RX after receiving a packet
+  cc1101_read_config(MCSM1);
+
+  // set GDO0 GPIO function to assert transmission of sync packet
+  cc1101_write_config(IOCFG0, 0x06);
 
   cc1101_command_strobe(header_command_sfrx);
   cc1101_set_receive();
 
-  _timestamp_unref_queue  = timestamp_unref_queue;
-  _timestamp_ref_queue  = timestamp_ref_queue;
+  while(IS_STATE(cc1101_get_chip_state(), CALIBRATE)) {
+    printf("device is calibrating\n");
+  }
 
   g_thread_new("radio_slave", radio_slave_thread_func, NULL);
 }

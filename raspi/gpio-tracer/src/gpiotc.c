@@ -16,9 +16,11 @@
 static gboolean start = FALSE;
 static gboolean stop = FALSE;
 static gchar* logpath = NULL;
+static gchar* nodeType = "master";
 
 static const GOptionEntry entries[] = {
   {"start",      's'    , 0, G_OPTION_ARG_NONE,     &start      , "Tell daemon to start gpio tracing",                 NULL},
+  {"nodeType",   's'    , 0, G_OPTION_ARG_STRING,     &nodeType      , "type of daemon {master, slave})",                 NULL},
   {"stop",       'k'    , 0, G_OPTION_ARG_NONE,     &stop       , "Tell daemon to start gpio tracing",                 NULL},
   {"logpath",    'l'    , 0, G_OPTION_ARG_FILENAME, &logpath    , "path where the trace logs should be stored ",       NULL},
   { NULL }
@@ -94,7 +96,7 @@ static void on_name_appeared(GDBusConnection *connection, const gchar *name,
     } else {
       _logpath = "/tmp/gpio-default-log.csv"; // TODO don't output if no logpath is passed
     }
-    parameters = g_variant_new("(s)", _logpath); // TODO use _ prefix for 'globals'
+    parameters = g_variant_new("(ss)", _logpath, nodeType); // TODO use _ prefix for 'globals'
   } else if(stop) {
     method = "Stop";
   }

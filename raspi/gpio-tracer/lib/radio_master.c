@@ -49,7 +49,10 @@ static gpointer radio_master_thread_func(gpointer data) {
       __u8 write_buf[sizeof(timestamp_t)+1]; // first byte for packet length
       write_buf[0] = sizeof(timestamp_t);
       memcpy(write_buf+1, &ref_timestamp, sizeof(timestamp_t));
-      cc1101_write_tx_fifo(write_buf, sizeof(timestamp_t)+1); // TODO there should be another function automatically prefixing with the length
+      cc1101_write_tx_fifo(write_buf, sizeof(timestamp_t)+1);
+      // TODO there should be another function automatically prefixing with the length
+
+      printf("Send timestamp %" PRIu64 "\n", ref_timestamp);
     }
 
     if (IS_STATE(cc1101_get_chip_state(), IDLE)) {
@@ -65,7 +68,7 @@ static gpointer radio_master_thread_func(gpointer data) {
 
 int radio_master_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
   int handle; // handle system not implemented, use structure instead for one session?
-  handle = cc1101_init("/dev/spidev0.1");
+  handle = cc1101_init("/dev/spidev0.0");
 
   if (handle < 0) return 0;
 

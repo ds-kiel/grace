@@ -12,7 +12,7 @@
 #include <stdbool.h>
 
 static gboolean _running = FALSE;
-static gboolean node_is_slave = FALSE;
+static gboolean _node_is_slave = FALSE;
 
 static struct sr_context* sr_cntxt;
 struct sr_session* sr_session;
@@ -75,7 +75,8 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
 
                   // In case this node is configured as slave we listen for incoming signals on the receiver channel and try to match them
                   // with a packet from the RX fifo queue through the radio-slave module by pushing our timestamped packet into the unref queue
-                  if (node_is_slave) {
+                  if (_node_is_slave) {
+                    g_printf("received signal on GPO0\n");
                     timestamp_t *timestamp_h = malloc(sizeof(timestamp_t));
                     *timestamp_h = timestamp_from_samples(sample_count);
                     g_async_queue_push(_timestamp_unref_queue, timestamp_h);
@@ -173,6 +174,10 @@ void session_stopped_callback(void* data) {
   preprocess_kill_instance();
 }
 
+
+void preprocess_set_type(const gchar* nodeType) {
+  _node_is_slave = strcmp(nodeType, "master"); // TODO g_strcmp ???
+}
 
 // ownership of channel_modes is transfered to preprocess_init_sigrok(), so the GVariant should not be unreffed by the callee!
 // returns -1 on failure. returns 1 if session already exists
@@ -318,7 +323,7 @@ int preprocess_init(GVariant* channel_modes, GAsyncQueue *trace_queue, GAsyncQue
     return 1;
   }
 
-  if (preprocess_init_sigrok(4000000) < 0) {
+  if (preprocess_init_sigrok(8000000) < 0) {
     g_printf("Could not initialize sigrok instance!\n");
     return -1;
   };

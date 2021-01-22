@@ -7,6 +7,7 @@
 #include <types.h>
 #include <inttypes.h>
 #include <radio-master.h>
+#include <radio-slave.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <gio/gio.h>
@@ -28,6 +29,7 @@ static const gchar introspection_xml[] =
   "    <method name='Start'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
   "      <arg type='s' name='logPath' direction='in'/>"
+  "      <arg type='s' name='nodeType' direction='in'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
   "    <method name='Stop'>"
@@ -49,17 +51,27 @@ static const gchar introspection_xml[] =
   "  </interface>"
   "</node>";
 
-static int start_tasks(GVariant* channel_modes) {
+static int start_tasks(GVariant* channel_modes, const gchar* nodeType) {
   _trace_queue           = g_async_queue_new();
   _timestamp_unref_queue = g_async_queue_new();
   _timestamp_ref_queue   = g_async_queue_new();
 
+  preprocess_set_type(nodeType); // TODO coordination required. Setting after preprocess_init could result in deadlock
 
   // TODO it is not a particular nice design that with master/slave support the preprocess needs both a reference to the ref and unref queue
   // while only when in master mode the module needs both references.
-  preprocess_init(channel_modes, _trace_queue, _timestamp_unref_queue, _timestamp_ref_queue);
-  postprocess_init("/usr/testbed/sample_data/test1.csv", _trace_queue, _timestamp_ref_queue);
-  radio_master_init(_timestamp_unref_queue, _timestamp_ref_queue);
+
+  if (!(strcmp("master", nodeType))) {
+    preprocess_init(channel_modes, _trace_queue, _timestamp_unref_queue, _timestamp_ref_queue);
+    postprocess_init("/usr/testbed/sample_data/test1.csv", _trace_queue, _timestamp_ref_queue);
+    radio_master_init(_timestamp_unref_queue, _timestamp_ref_queue);
+  } else if (!(strcmp("slave", nodeType))) {
+    radio_slave_init(_timestamp_unref_queue, _timestamp_ref_queue);
+    sleep(2);
+    preprocess_init(channel_modes, _trace_queue, _timestamp_unref_queue, _timestamp_ref_queue);
+    postprocess_init("/usr/testbed/sample_data/test1.csv", _trace_queue, _timestamp_ref_queue);
+  }
+
 }
 
 static int stop_tasks() {
@@ -83,11 +95,12 @@ static void handle_method_call(GDBusConnection *connnection,
   if (!g_strcmp0(method_name, "Start")) {
     int ret;
     const gchar *logpath;
+    const gchar *nodeType;
 
     g_printf("Invocation: Start\n");
 
-    g_variant_get(parameters, "(&s)", &logpath);
-    g_printf("Parameters: %s \n", logpath);
+    g_variant_get(parameters, "(&s&s)", &logpath, &nodeType);
+    g_printf("Parameters: %s %s\n", logpath, nodeType);
 
     GVariantBuilder* channel_modes_builder = g_variant_builder_new(G_VARIANT_TYPE("a(yy)"));
     GVariant* channel_modes;
@@ -104,7 +117,7 @@ static void handle_method_call(GDBusConnection *connnection,
     g_variant_builder_unref(channel_modes_builder);
 
     g_print(g_variant_print(channel_modes,TRUE));
-    if ((ret = start_tasks(channel_modes)) < 0) {
+    if ((ret = start_tasks(channel_modes, nodeType)) < 0) {
       result = g_strdup_printf("Unable to run instance");
     } else if (ret > 0) {
       result = g_strdup_printf("Instance already running");

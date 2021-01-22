@@ -5,7 +5,7 @@ See [stackoverflow](https://serverfault.com/questions/892465/starting-systemd-se
 ### Installation on Raspbian
 ```
   apt update
-  apt install libsigrok-dev libglib2.0-dev python3
+  apt install libsigrok-dev libglib2.0-dev python3 sigrok-firmware-fx2lafw
   apt install default-dbus-session-bus # Needed for running dbus-user sessions. Only needed for development
 ```
 
