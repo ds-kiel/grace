@@ -61,7 +61,6 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
         initial_df_logic_packet = FALSE;
       }
 
-      size_t changes_in_payload = 0;
       for(size_t i = 0; i < payload->length; i++) {
         /* printf("Got datafeed payload of length %" PRIu64 " Unit size is %" PRIu16 " byte\n", payload->length, payload->unitsize); */
         if((data[i]&_active_channel_mask) != last) {
@@ -92,7 +91,6 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                 }
               } else { // evaluate data from other channels
                 g_printf("Channel %d changed state \n", _channels[k].channel);
-                changes_in_payload++;
                 if((_channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
                   state = 0;
                 } else if (_channels[k].mode & MATCH_RISING) {  // rising signal
@@ -102,7 +100,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                 trace_t *data = malloc(sizeof(trace_t));
                 data->channel = _channels[k].channel;
                 data->state = state;
-                data->timestamp_ns = timestamp_from_samples(sample_count); // use last edge of the pulse series for timestamp
+                data->timestamp_ns = timestamp_from_samples(sample_count);
 
                 g_async_queue_push(_trace_queue, data);
               }

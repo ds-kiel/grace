@@ -23,7 +23,7 @@ static gpointer radio_slave_thread_func(gpointer data) {
     // after reception radio moves to IDLE. We can't just stay in RX_MODE all the time because we might receive garbage data
     while(IS_STATE(cc1101_get_chip_state(), RX_MODE)) {
       printf("waiting for complete package reception\n");
-      g_usleep(100);
+      g_usleep(1000);
     }
 
     // in case of high background noise the PQT might be too small and noise is mistaking as valid data.
