@@ -23,7 +23,7 @@ static gpointer radio_slave_thread_func(gpointer data) {
     // after reception radio moves to IDLE. We can't just stay in RX_MODE all the time because we might receive garbage data
     while(IS_STATE(cc1101_get_chip_state(), RX_MODE)) {
       printf("waiting for complete package reception\n");
-      g_usleep(1000);
+      g_usleep(100000);
     }
 
     // in case of high background noise the PQT might be too small and noise is mistaking as valid data.
@@ -33,13 +33,16 @@ static gpointer radio_slave_thread_func(gpointer data) {
       cc1101_set_receive();
     } else if (IS_STATE(cc1101_get_chip_state(), IDLE)) {
       bytes_avail = cc1101_rx_fifo_bytes();
-      if(bytes_avail == sizeof(timestamp_t) + 3) { // our packets will always have 11 bytes. Together with receiver CRC this should ensure we only process valid packets
-        __u8 read_buf[bytes_avail]; // TODO module should hide kernel types?
+      if(bytes_avail == 4 + 3) { // maybe change again later to 8 byte packets
+        uint8_t read_buf[bytes_avail];
+        uint32_t ref_timestamp_sec;
+
         cc1101_read_rx_fifo(read_buf, bytes_avail);
         // read ref timestamp from read_buf.
         ref_timestamp_pair = malloc(sizeof(timestamp_pair_t));
         ref_timestamp_pair->local_timestamp_ns = *unref_timestamp;
-        memcpy(&ref_timestamp_pair->reference_timestamp_ns, read_buf+1, sizeof(timestamp_t));
+        memcpy(&ref_timestamp_sec, read_buf+1, sizeof(uint32_t));
+        ref_timestamp_pair->reference_timestamp_ns = ref_timestamp_sec * 1e9;
         g_async_queue_push(_timestamp_ref_queue, ref_timestamp_pair);
 
         free(unref_timestamp); // data moved to wrapper structure so we can free it now
@@ -83,7 +86,7 @@ int radio_slave_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_
   /* cc1101_read_config(MCSM1); */
 
   // set GDO0 GPIO function to assert transmission of sync packet
-  cc1101_write_config(IOCFG0, 0x06);
+  cc1101_write_config(IOCFG0, 0x07);
 
   // ensure device is in IDLE mode
   cc1101_command_strobe(header_command_sidle);
