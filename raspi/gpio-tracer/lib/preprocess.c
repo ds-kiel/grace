@@ -90,7 +90,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
                   }
                 }
               } else { // evaluate data from other channels
-                g_printf("Channel %d changed state \n", _channels[k].channel);
+                /* g_printf("Channel %d changed state \n", _channels[k].channel); */
                 if((_channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
                   state = 0;
                 } else if (_channels[k].mode & MATCH_RISING) {  // rising signal
