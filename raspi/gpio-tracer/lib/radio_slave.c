@@ -18,13 +18,18 @@ static gpointer radio_slave_thread_func(gpointer data) {
     timestamp_pair_t *ref_timestamp_pair;
 
     printf("waiting for signal on logic analyzer\n");
-    unref_timestamp = g_async_queue_timeout_pop(_timestamp_unref_queue, 250e3); // timeout 250 milliseconds
+    unref_timestamp = g_async_queue_timeout_pop(_timestamp_unref_queue, 200e3); // timeout 250 milliseconds
 
     // timeout check wether transceiver is in correct state
     if(unref_timestamp == NULL) {
       if (IS_STATE(cc1101_get_chip_state(), RXFIFO_OVERFLOW)) {
         cc1101_command_strobe(header_command_sfrx);
         cc1101_set_receive();
+      } else if (IS_STATE(cc1101_get_chip_state(), IDLE)) {
+        bytes_avail = cc1101_rx_fifo_bytes();
+        if(!bytes_avail) {
+          cc1101_set_receive();
+        }
       }
     } else {
 
