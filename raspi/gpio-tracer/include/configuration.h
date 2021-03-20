@@ -1,6 +1,6 @@
 #ifndef CONFIGURATION_H
 #define CONFIGURATION_H
 
-#define RECEIVER_CHANNEL 5
+#define RECEIVER_CHANNEL 7
 
 #endif /* CONFIGURATION_H */

@@ -4,7 +4,7 @@
 #include "types.h"
 #include <glib.h>
 
-int postprocess_init(const gchar* logpath, GAsyncQueue* trace_queue, GAsyncQueue* timestamp_ref_queue);
+int postprocess_init(const gchar* logpath, GAsyncQueue* trace_queue);
 
 // TODO should be file local
 int close_output_file();

@@ -1,27 +1,42 @@
 #include <radio-slave.h>
 #include <stdio.h>
 #include <glib.h>
+#include <glib/gprintf.h>
 #include <types.h>
 
 #include <cc1101-spidev/cc1101.h>
 #include <inttypes.h>
 #include <time.h>
 
-static GAsyncQueue *_timestamp_unref_queue; // holds local timestamps from logic analyzer
-static GAsyncQueue *_timestamp_ref_queue; // holds pairs of local timestamps and reference timestamp
+static GAsyncQueue *_timestamp_ref_queue; // return queue for reference timestamps
+static GAsyncQueue *_timestamp_unref_queue; // process incoming gpio signals captured by the logic analyzer
 
 static gpointer radio_slave_thread_func(gpointer data) {
+  static uint8_t no_signal_cnt = 0;
   while(1) {
     int ret;
     int bytes_avail;
-    timestamp_t *unref_timestamp;
-    timestamp_pair_t *ref_timestamp_pair;
+    timestamp_pair_t *reference_timestamp_pair = NULL; // add timestamp from preprocess to identify pair
+    timestamp_t *local_timestamp_ns = NULL;
 
-    printf("waiting for signal on logic analyzer\n");
-    unref_timestamp = g_async_queue_timeout_pop(_timestamp_unref_queue, 200e3); // timeout 250 milliseconds
+    /* local_timestamp_ns = g_async_queue_timeout_pop(_timestamp_unref_queue, 2000e3); // timeout 250 milliseconds */
+    local_timestamp_ns = g_async_queue_pop(_timestamp_unref_queue); // timeout 250 milliseconds
 
     // timeout check wether transceiver is in correct state
-    if(unref_timestamp == NULL) {
+    if(local_timestamp_ns == NULL) {
+      no_signal_cnt += 1;
+
+      if (!(no_signal_cnt % 100)) {
+        no_signal_cnt = 0;
+        bytes_avail = cc1101_rx_fifo_bytes();
+        if(!bytes_avail) {
+          g_printf("manual recalibration \n");
+          cc1101_command_strobe(header_command_sidle);
+          cc1101_command_strobe(header_command_scal);
+          while(!IS_STATE(cc1101_get_chip_state(), IDLE)) g_usleep(10000);
+          cc1101_set_receive();
+        }
+      }
       if (IS_STATE(cc1101_get_chip_state(), RXFIFO_OVERFLOW)) {
         cc1101_command_strobe(header_command_sfrx);
         cc1101_set_receive();
@@ -32,7 +47,7 @@ static gpointer radio_slave_thread_func(gpointer data) {
         }
       }
     } else {
-
+      no_signal_cnt = 0;
       // in case of high background noise the PQT might be too small and noise is mistaking as valid data.
       // This should be the only case where the FIFO overflows so we just discard all received data.
       if (IS_STATE(cc1101_get_chip_state(), RXFIFO_OVERFLOW)) {
@@ -42,20 +57,23 @@ static gpointer radio_slave_thread_func(gpointer data) {
         bytes_avail = cc1101_rx_fifo_bytes();
         if(bytes_avail == 4 + 3) { // maybe change again later to 8 byte packets
           uint8_t read_buf[bytes_avail];
-          uint32_t ref_timestamp_sec;
+          uint32_t reference_timestamp_sec;
 
           cc1101_read_rx_fifo(read_buf, bytes_avail);
-          // read ref timestamp from read_buf.
-          ref_timestamp_pair = malloc(sizeof(timestamp_pair_t));
-          ref_timestamp_pair->local_timestamp_ns = *unref_timestamp;
-          memcpy(&ref_timestamp_sec, read_buf+1, sizeof(uint32_t));
-          ref_timestamp_pair->reference_timestamp_ns = ref_timestamp_sec * 1e9;
-          g_async_queue_push(_timestamp_ref_queue, ref_timestamp_pair);
+          memcpy(&reference_timestamp_sec, read_buf+1, sizeof(uint32_t));
 
-          free(unref_timestamp); // data moved to wrapper structure so we can free it now
+          g_printf("Got reference seconds: %d\n", reference_timestamp_sec);
+
+          reference_timestamp_pair = malloc(sizeof(timestamp_pair_t));
+          reference_timestamp_pair->local_timestamp_ns = *local_timestamp_ns;
+          reference_timestamp_pair->reference_timestamp_ns = reference_timestamp_sec * 1e9;
+
+          g_async_queue_push(_timestamp_ref_queue, reference_timestamp_pair);
         }
+
         cc1101_command_strobe(header_command_sfrx);
         cc1101_set_receive(); // we are ready to receive another package
+
       }
     }
   }

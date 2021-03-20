@@ -12,7 +12,6 @@ static const gchar* _output_file_name;
 static FILE *_fp;
 
 static GAsyncQueue *_trace_queue;
-static GAsyncQueue *_timestamp_ref_queue;
 
 static void correct_timestamps_in_range(const timestamp_pair_t *ts_1, const timestamp_pair_t *ts_2) {
   trace_t *sample;
@@ -32,25 +31,17 @@ static void correct_timestamps_in_range(const timestamp_pair_t *ts_1, const time
 }
 
 static gpointer postprocess_thread_func(gpointer data) {
-  timestamp_pair_t *ts_1 = g_async_queue_pop(_timestamp_ref_queue);
-  while(1) {
-    timestamp_pair_t *ts_2 = g_async_queue_pop(_timestamp_ref_queue);
-
-    correct_timestamps_in_range(ts_1, ts_2);
-
-    free(ts_1);
-    ts_1 = ts_2;
-  }
+  g_async_queue_pop(_trace_queue);
+  g_printf("Yeah input!\n");
 }
 
   // free samples when writing into file
 
-int postprocess_init(const gchar* logpath, GAsyncQueue* trace_queue, GAsyncQueue* timestamp_ref_queue) {
+int postprocess_init(const gchar* logpath, GAsyncQueue* trace_queue) {
   // TODO pass reference to shared memory segment or threaded queue or whatever ...
   g_printf("Initializing postprocess thread!\n");
 
   _trace_queue = trace_queue;
-  _timestamp_ref_queue = timestamp_ref_queue;
 
   if (open_output_file(logpath, TRUE) < 0) {
     g_printf("Unable to open output file %s\n", logpath);

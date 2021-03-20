@@ -5,51 +5,156 @@
 #include <radio.h>
 #include <configuration.h>
 
-#include <libsigrok/libsigrok.h>
+
 #include <glib/gprintf.h>
 
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <math.h>
 
-static gboolean _running = FALSE;
-static gboolean _node_is_slave = FALSE;
 
-static struct sr_context* sr_cntxt;
-struct sr_session* sr_session;
-struct sr_dev_inst* fx2ladw_dvc_instc;
-
-static char _active_channel_mask; // stream input is a byte with each channel represententing 1 bit
-static guint8 _channel_count;
-
-static struct channel_mode* _channels;
-static guint32 _samplerate;
-static double _nsec_per_sample; // TODO try long double performance
-
-static GAsyncQueue* _trace_queue;
-static GAsyncQueue* _timestamp_unref_queue;
-static GAsyncQueue* _timestamp_ref_queue;
-
-static inline timestamp_t timestamp_from_samples(guint64 sample_count) {
-  return (timestamp_t) _nsec_per_sample * sample_count;
+void init_clock(preprocess_instance_t* process, guint32 frequency) {
+  /* process->local_clock = malloc(sizeof(lclock_t)); */
+  process->local_clock.nom_freq = frequency;
+  process->local_clock.nom_period = 1e9/(double) frequency;
+  process->local_clock.period = process->local_clock.nom_period;
+  process->local_clock.state = WAIT;
 }
 
+void tick(preprocess_instance_t *process) {
+  lclock_t *clk = &(process->local_clock);
+  if (clk->state > WAIT) {
+    /* guint32 period; */
+    /* guint32 x; */
+    /* guint32 y; */
+    /* guint32 z; */
+
+    /* x = clk->res_error; */
+    /* y = clk->offset/(TIME_LOOP_CONSTANT*clk->update_time); */
+    /* z = x / (t_c * 16); */
+    /* x -= z; */
+    /* clk->res_error = x; */
+
+    /* double z = clk->res_error/1000 < -1 ? -1 : clk->res_error/1000 > 1 ? 1 : clk->res_error/1000; */
+    /* clk->res_error -= z; */
+
+    clk->phase += clk->period;
+  }
+}
+
+// time reference signal handling
+static void handle_time_ref_signal(preprocess_instance_t *process) {
+  timestamp_t *signal_cnt = malloc(sizeof(timestamp_t)); // TODO
+  *signal_cnt = 1;
+  timestamp_t *timestamp_local = NULL;
+  timestamp_pair_t *reference_timestamp_pair = NULL;
+
+  lclock_t *clk = &(process->local_clock);
+  /* *timestamp_local = clk->phase; */
+
+  g_async_queue_push(process->timestamp_unref_queue, signal_cnt);
+  // read data from process
+  /* reference_timestamp_pair = g_async_queue_timeout_pop(process->timestamp_ref_queue, 1000e3); // if no answer after 500 milliseconds discard reference packet */
+
+  reference_timestamp_pair = g_async_queue_pop(process->timestamp_ref_queue); // if no answer after 500 milliseconds discard reference packet
+  if (reference_timestamp_pair != NULL) {
+    switch (clk->state) {
+    case WAIT: {
+      clk->state = OFFSET;
+      clk->phase = reference_timestamp_pair->reference_timestamp_ns;
+      clk->prev_phase = clk->phase;
+      break;
+    }
+    case OFFSET: {
+      clk->state = FREQ;
+      clk->offset = clk->phase - reference_timestamp_pair->reference_timestamp_ns;
+      clk->freq = clk->nom_freq * (1 + clk->offset/(clk->phase - clk->prev_phase));
+      clk->period = 1e9/((double)clk->freq);
+
+      clk->phase = reference_timestamp_pair->reference_timestamp_ns;
+      clk->prev_phase = clk->phase;
+      printf("period %f\n", clk->period);
+      break;
+    }
+    case FREQ: {
+      ;timestamp_t offset;
+      timestamp_t local_phase;
+      timestamp_t ref_phase;
+      timestamp_t offset_delta; // under the assumption that the previous offset was eliminated completly not neccessary
+      timestamp_t local_delta;
+
+      ref_phase = reference_timestamp_pair->reference_timestamp_ns;
+      local_phase =  clk->phase;
+      offset = local_phase - ref_phase;
+      offset_delta = offset - clk->offset;
+
+      /* offset_delta = offset - clk->offset; // offset gain or reduction since last update */
+      local_delta = local_phase - clk->prev_phase;
+
+      // update elements
+      clk->offset = offset;
+      clk->res_error = clk->offset;
+      clk->prev_phase = clk->phase;
+      clk->res_error = clk->offset;
+
+      double P,I,D;
+      /* clk->freq += (double) offset/local_delta; */
+      clk->I += (double) offset;
+      /* clk->I = clk->I < -1e9 ? -1e9 : clk->I > 1e9 ? 1e9 : clk->I; */
+      clk->I = clk->I < -7e5 ? -7e5 : clk->I > 7e5 ? 7e5 : clk->I;
+
+      I = clk->I*0.000001;
+      P = offset*0.002;
+      /* P = offset/(32*3); */
+      D = offset_delta*0.0002;
+      /* clk->freq = clk->freq + P + D; */
+      clk->freq = clk->freq + P;
+      /* clk->freq = clk->freq + P; */
+
+      clk->period = 1e9/((double) clk->freq);
+      /* clk->period -= I; */
+
+
+      printf("offset %f, period %f", offset, clk->period);
+      printf("I: %f ", I);
+      printf("P: %f ", P);
+      printf("D: %f ", D);
+      break;
+    }
+default:
+      break;
+    }
+  } else {
+    g_printf("Discarded reference signal. Transceiver took to long to answer! \n");
+  }
+  free(signal_cnt);
+}
+
+// GPIO signal handling
+static inline void handle_gpio_signal(preprocess_instance_t *process, uint8_t state, uint8_t channel) {
+  trace_t *trace = malloc(sizeof(trace_t));
+  trace->channel = channel;
+  trace->state = state;
+  trace->timestamp_ns = process->local_clock.phase;
+
+  g_async_queue_push(process->trace_queue, trace);
+}
 
 void data_feed_callback(const struct sr_dev_inst *sdi,
                                             const struct sr_datafeed_packet *packet,
                                             void *cb_data) {
   static gboolean initial_df_logic_packet = TRUE;
   static uint8_t last;
+  preprocess_instance_t *process = (preprocess_instance_t*) cb_data;
   /* static timestamp_t first_sync_timestamp; */
-  static guint64 sample_count;
-
 
   switch (packet->type) {
     case SR_DF_HEADER: {
       struct sr_datafeed_header *payload = (struct sr_datafeed_header*) packet->payload;
       printf("got datafeed header: feed version %d, startime %lu\n", payload->feed_version, payload->starttime.tv_usec);
       initial_df_logic_packet = TRUE;
-      sample_count = 0;
-      _nsec_per_sample = (1.0/(double)_samplerate)*1e9;
+
       break;
     }
     case SR_DF_LOGIC: {
@@ -57,60 +162,38 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
       uint8_t* data = payload->data;
 
       if(initial_df_logic_packet) {
-        last = data[0]&_active_channel_mask;
+        last = data[0] & process->active_channel_mask;
         initial_df_logic_packet = FALSE;
       }
 
       for(size_t i = 0; i < payload->length; i++) {
         /* printf("Got datafeed payload of length %" PRIu64 " Unit size is %" PRIu16 " byte\n", payload->length, payload->unitsize); */
-        if((data[i]&_active_channel_mask) != last) {
-          for (size_t k = 0; k < _channel_count ; k++) {
-            uint8_t k_channel_mask = (1<<_channels[k].channel);
-            int8_t delta = (last&k_channel_mask) - (data[i]&k_channel_mask);
+        if((data[i] & process->active_channel_mask) != last) {
+          for (size_t k = 0; k < process->channel_count ; k++) {
+            uint8_t k_channel_mask = (1<<process->channels[k].channel);
+            int8_t delta = ((last&k_channel_mask)>>process->channels[k].channel) - ((data[i]&k_channel_mask)>>process->channels[k].channel);
             uint8_t state;
             if(delta) {
-              if(_channels[k].channel == RECEIVER_CHANNEL) {
-                if(delta < 1) { // Rising signal -> save timestamp
-
-                  // In case this node is configured as slave we listen for incoming signals on the receiver channel and try to match them
-                  // with a packet from the RX fifo queue through the radio-slave module by pushing our timestamped packet into the unref queue
-                  if (_node_is_slave) {
-                    g_printf("received signal on GPO0\n");
-                    timestamp_t *timestamp_h = malloc(sizeof(timestamp_t));
-                    *timestamp_h = timestamp_from_samples(sample_count);
-                    g_async_queue_push(_timestamp_unref_queue, timestamp_h);
-                  } else { // If our node acts as a master instead the radio-master emits the reference signals itself, so we will pop from the unref queue
-                    timestamp_pair_t *timestamp_pair_ref = g_async_queue_try_pop(_timestamp_unref_queue);
-                    // TODO this is blocking, there should never be a case where we record a receiver signal without a element in the queue. Nevertheless a maximum delay
-                    // until the signal is unblocked a gain should be added.
-                    if (timestamp_pair_ref != NULL) {
-                      timestamp_pair_ref->local_timestamp_ns = timestamp_from_samples(sample_count);
-                      g_async_queue_push(_timestamp_ref_queue, timestamp_pair_ref);
-                    }
-                  }
+              if(process->channels[k].channel == RECEIVER_CHANNEL) {
+                if(delta < 0) { // Rising signal -> save timestamp
+                  handle_time_ref_signal(process);
                 }
-              } else { // evaluate data from other channels
-                /* g_printf("Channel %d changed state \n", _channels[k].channel); */
-                if((_channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
+              } else {
+                // determine wether signal was falling or rising
+                if((process->channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
                   state = 0;
-                } else if (_channels[k].mode & MATCH_RISING) {  // rising signal
+                } else if (process->channels[k].mode & MATCH_RISING) {  // rising signal
                   state = 1;
                 }
 
-                trace_t *data = malloc(sizeof(trace_t));
-                data->channel = _channels[k].channel;
-                data->state = state;
-                data->timestamp_ns = timestamp_from_samples(sample_count);
-
-                g_async_queue_push(_trace_queue, data);
+                handle_gpio_signal(process, state, process->channels[k].channel);
               }
             }
           }
         }
-        last = data[i]&_active_channel_mask;
-        sample_count++;
+        last = data[i] & process->active_channel_mask;
+        tick(process);
       }
-
       break;
     }
     case SR_DF_END: {
@@ -123,12 +206,12 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
   }
 }
 
-int preprocess_stop_instance() {
+int preprocess_stop_instance(preprocess_instance_t *process) {
   int ret;
 
   // uninitialize sigrok
-  free(_channels);
-  if ((ret = sr_session_stop(sr_session)) != SR_OK) {
+  free(process->channels);
+  if ((ret = sr_session_stop(process->sr_session)) != SR_OK) {
     printf("Error stopping sigrok session (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
   }
@@ -136,28 +219,28 @@ int preprocess_stop_instance() {
   return 0;
 }
 
-static int preprocess_kill_instance() {
+static int preprocess_kill_instance(preprocess_instance_t *process) {
   int ret;
 
-  if(_running || sr_session == NULL) {
+  if(process->state==RUNNING || process->sr_session == NULL) {
     g_printf("Unable to kill instance. Instance still _running or no session created.\n");
     return -1;
   }
 
-  if ((ret = sr_session_destroy(sr_session)) != SR_OK) {
+  if ((ret = sr_session_destroy(process->sr_session)) != SR_OK) {
     g_printf("Error destroying sigrok session (%s): %s.\n", sr_strerror_name(ret),
              sr_strerror(ret));
     return -1;
   }
 
-  if ((ret = sr_exit(sr_cntxt)) != SR_OK) {
+  if ((ret = sr_exit(process->sr_cntxt)) != SR_OK) {
     g_printf("Error shutting down libsigkrok (%s): %s.\n", sr_strerror_name(ret),
              sr_strerror(ret));
     return -1;
   }
 
-  sr_session = NULL;
-  sr_cntxt = NULL;
+  process->sr_session = NULL;
+  process->sr_cntxt = NULL;
 
   g_printf("Successfully killed sigrok instance\n");
 
@@ -166,33 +249,24 @@ static int preprocess_kill_instance() {
 
 
 void session_stopped_callback(void* data) {
+  preprocess_instance_t* process= (preprocess_instance_t*) data;
   g_printf("Session has stoppped!\n");
   close_output_file();
-  _running = FALSE;
-  preprocess_kill_instance();
+  process->state = STOPPED;
+  preprocess_kill_instance(process);
 }
 
-
-void preprocess_set_type(const gchar* nodeType) {
-  _node_is_slave = strcmp(nodeType, "master"); // TODO g_strcmp ???
-}
 
 // ownership of channel_modes is transfered to preprocess_init_sigrok(), so the GVariant should not be unreffed by the callee!
 // returns -1 on failure. returns 1 if session already exists
-static int preprocess_init_sigrok(guint32 samplerate)
+static int preprocess_init_sigrok(preprocess_instance_t *process, guint32 samplerate)
 {
+  int ret;
+
   g_printf("Initializing sigrok instance\n");
 
 
-  // initialize sigrok if none is already created
-  if (sr_session != NULL) {
-    return 1;
-    g_printf("instance already initialized!\n");
-  }
-
-  int ret;
-
-  if ((ret = sr_init(&sr_cntxt)) != SR_OK) {
+  if ((ret = sr_init(&(process->sr_cntxt))) != SR_OK) {
     printf("Error initializing libsigrok (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
   }
@@ -201,7 +275,7 @@ static int preprocess_init_sigrok(guint32 samplerate)
   //initialize fx2lafw
 
   struct sr_dev_driver** avbl_drvs;
-  if ((avbl_drvs = sr_driver_list(sr_cntxt)) == NULL) {
+  if ((avbl_drvs = sr_driver_list(process->sr_cntxt)) == NULL) {
     printf("No hardware drivers available\n");
   }
 
@@ -219,7 +293,7 @@ static int preprocess_init_sigrok(guint32 samplerate)
     return -1;
   }
 
-  if ((ret = sr_driver_init(sr_cntxt, fx2ladw_drv)) != SR_OK) {
+  if ((ret = sr_driver_init(process->sr_cntxt, fx2ladw_drv)) != SR_OK) {
     printf("Could not initialize driver fx2lafw!\n");
     return -1;
   }
@@ -230,9 +304,10 @@ static int preprocess_init_sigrok(guint32 samplerate)
     printf("Could not find any fx2ladw compatible devices\n");
     return -1;
   }
-  fx2ladw_dvc_instc = fx2ladw_dvcs->data;
 
-  if ((ret = sr_dev_open(fx2ladw_dvc_instc)) != SR_OK) {
+  process->fx2ladw_dvc_instc = fx2ladw_dvcs->data;
+
+  if ((ret = sr_dev_open(process->fx2ladw_dvc_instc)) != SR_OK) {
     printf("Could not open device (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
   }
@@ -246,14 +321,14 @@ static int preprocess_init_sigrok(guint32 samplerate)
     return -1;
   }
 
-   GArray* fx2ladw_dvc_opts = sr_dev_options(fx2ladw_drv, fx2ladw_dvc_instc, NULL);
+   GArray* fx2ladw_dvc_opts = sr_dev_options(fx2ladw_drv, process->fx2ladw_dvc_instc, NULL);
   // TODO handle multiple possible instances
   for(size_t k = 0; k < fx2ladw_dvc_opts->len; k++) {
     enum sr_configkey key = g_array_index(fx2ladw_dvc_opts, enum sr_configkey, k);
     printf("key: %d\n", key);
 
     GVariant* values;
-    switch (ret = sr_config_list(fx2ladw_drv, fx2ladw_dvc_instc, NULL, key, &values)) {
+    switch (ret = sr_config_list(fx2ladw_drv, process->fx2ladw_dvc_instc, NULL, key, &values)) {
       case SR_ERR: {
         printf("Something did go wrong (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
         return -1;
@@ -275,32 +350,38 @@ static int preprocess_init_sigrok(guint32 samplerate)
     if(key == SR_CONF_SAMPLERATE) {
       guint32 rate = samplerate;
       GVariant *data = g_variant_new_uint64 (rate);
-      if((ret = sr_config_set(fx2ladw_dvc_instc, NULL, key, data))) {
+      if((ret = sr_config_set(process->fx2ladw_dvc_instc, NULL, key, data))) {
         printf("Could not set samplerate (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
         return -1;
       }
-      _samplerate = samplerate;
-      printf("successfully set sample rate to %" PRIu32 "\n", _samplerate);
+
+      printf("successfully set sample rate to %" PRIu32 "\n", samplerate);
     }
   }
   g_array_free(fx2ladw_dvc_opts, TRUE);
 
   // setting up new sigrok session
-  if ((ret = sr_session_new(sr_cntxt, &sr_session)) != SR_OK) {
+  if ((ret = sr_session_new(process->sr_cntxt, &(process->sr_session))) != SR_OK) {
     printf("Unable to create session (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
   }
 
-  if ((ret = sr_session_dev_add(sr_session, fx2ladw_dvc_instc)) != SR_OK) {
+  if ((ret = sr_session_dev_add(process->sr_session, process->fx2ladw_dvc_instc)) != SR_OK) {
     printf("Could not add device to instance (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
   }
 
-  void* data;
-  if ((ret = sr_session_datafeed_callback_add(sr_session, &data_feed_callback, data)) != SR_OK) {
-    printf("Could not add device to instance (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
+  void* data = (void*) process;
+  if ((ret = sr_session_datafeed_callback_add(process->sr_session, &data_feed_callback, data)) != SR_OK) {
+    printf("Could not add datafeed callback to instance (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
   }
+
+  if ((ret = sr_session_stopped_callback_set(process->sr_session, &session_stopped_callback, data)) != SR_OK) {
+    printf("Could not add stopped callback to instance (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
+    return -1;
+  }
+
 
   //cleanup
   g_array_free(fx2ladw_scn_opts, TRUE);
@@ -309,19 +390,19 @@ static int preprocess_init_sigrok(guint32 samplerate)
   return 0;
 }
 
-gboolean preprocess_running() {
-  return _running;
+gboolean preprocess_running(preprocess_instance_t* process) {
+  return process->state == RUNNING;
 }
 
-int preprocess_init(GVariant* channel_modes, GAsyncQueue *trace_queue, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
+int preprocess_init(preprocess_instance_t *process, GVariant *channel_modes, GAsyncQueue *trace_queue, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
   int ret;
 
-  if(_running) {
+  if(process->state == RUNNING) {
     g_printf("Instance already running!\n");
     return 1;
   }
 
-  if (preprocess_init_sigrok(8000000) < 0) {
+  if (preprocess_init_sigrok(process, 8000000) < 0) {
     g_printf("Could not initialize sigrok instance!\n");
     return -1;
   };
@@ -335,17 +416,17 @@ int preprocess_init(GVariant* channel_modes, GAsyncQueue *trace_queue, GAsyncQue
   length = 0;
   while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) length++;
   g_variant_iter_free(iter);
-  _channels = malloc(length * sizeof(struct channel_mode));
-  _channel_count = length;
+  process->channels = malloc(length * sizeof(struct channel_mode));
+  process->channel_count = length;
   g_variant_get(channel_modes, "a(yy)", &iter);
 
-  _active_channel_mask = 0;
+  process->active_channel_mask = 0;
   gint8 k = 0;
   while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) {
     g_printf("add channel %d with mode %d\n", channel, mode);
-    _active_channel_mask += 1<<channel;
-    _channels[k].channel = channel;
-    _channels[k].mode = mode;
+    process->active_channel_mask += 1<<channel;
+    process->channels[k].channel = channel;
+    process->channels[k].mode = mode;
     k++;
   }
 
@@ -353,18 +434,19 @@ int preprocess_init(GVariant* channel_modes, GAsyncQueue *trace_queue, GAsyncQue
   g_variant_unref(channel_modes);
 
   // set queue
-  _trace_queue = trace_queue;
-  _timestamp_unref_queue = timestamp_unref_queue;
-  _timestamp_ref_queue = timestamp_ref_queue;
+  process->trace_queue = trace_queue;
+  process->timestamp_unref_queue = timestamp_unref_queue;
+  process->timestamp_ref_queue = timestamp_ref_queue;
 
-  if ((ret = sr_session_start(sr_session)) != SR_OK) {
+  // initialize local clock
+  init_clock(process, 8000000);
+
+  if ((ret = sr_session_start(process->sr_session)) != SR_OK) {
     printf("Could not start session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
   }
 
-  sr_session_stopped_callback_set(sr_session, &session_stopped_callback, NULL);
-
-  _running = TRUE;
+  process->state = RUNNING;
 
   return 0;
 }

@@ -19,6 +19,7 @@ static GDBusNodeInfo* introspection_data = NULL;
 static GAsyncQueue *_trace_queue; // store queues so we can later safely unref them
 static GAsyncQueue *_timestamp_unref_queue;
 static GAsyncQueue *_timestamp_ref_queue;
+static preprocess_instance_t *preprocess_task;
 
 /* Introspection data for the service we are exporting */
 static const gchar introspection_xml[] =
@@ -56,26 +57,15 @@ static int start_tasks(GVariant* channel_modes, const gchar* nodeType) {
   _timestamp_unref_queue = g_async_queue_new();
   _timestamp_ref_queue   = g_async_queue_new();
 
-  preprocess_set_type(nodeType); // TODO coordination required. Setting after preprocess_init could result in deadlock
-
-  // TODO it is not a particular nice design that with master/slave support the preprocess needs both a reference to the ref and unref queue
-  // while only when in master mode the module needs both references.
-
-  if (!(strcmp("master", nodeType))) {
-    preprocess_init(channel_modes, _trace_queue, _timestamp_unref_queue, _timestamp_ref_queue);
-    postprocess_init("/usr/testbed/sample_data/test1.csv", _trace_queue, _timestamp_ref_queue);
-    radio_master_init(_timestamp_unref_queue, _timestamp_ref_queue);
-  } else if (!(strcmp("slave", nodeType))) {
-    radio_slave_init(_timestamp_unref_queue, _timestamp_ref_queue);
-    preprocess_init(channel_modes, _trace_queue, _timestamp_unref_queue, _timestamp_ref_queue);
-    postprocess_init("/usr/testbed/sample_data/test1.csv", _trace_queue, _timestamp_ref_queue);
-    radio_slave_start_reception();
-  }
-
+  preprocess_task = malloc(sizeof(preprocess_instance_t));
+  radio_slave_init(_timestamp_unref_queue, _timestamp_ref_queue);
+  preprocess_init(preprocess_task, channel_modes, _trace_queue, _timestamp_unref_queue, _timestamp_ref_queue);
+  postprocess_init("/usr/testbed/sample_data/test1.csv", _trace_queue);
+  radio_slave_start_reception();
 }
 
 static int stop_tasks() {
-  preprocess_stop_instance();
+  preprocess_stop_instance(preprocess_task);
   g_async_queue_unref(_trace_queue          );
   g_async_queue_unref(_timestamp_unref_queue);
   g_async_queue_unref(_timestamp_ref_queue  );
@@ -130,7 +120,7 @@ static void handle_method_call(GDBusConnection *connnection,
   } else if (!g_strcmp0(method_name, "Stop")) {
     g_printf("Invocation: Stop\n");
 
-    if (preprocess_running()) {
+    if (preprocess_running(preprocess_task)) {
       int ret;
       if ((ret = stop_tasks()) >= 0) {
         result = g_strdup_printf("Stopped");
@@ -143,7 +133,7 @@ static void handle_method_call(GDBusConnection *connnection,
     g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
   } else if (!g_strcmp0(method_name, "getState")) {
     gpiot_daemon_state_t state;
-    if(preprocess_running())
+    if(preprocess_running(preprocess_task))
       state = GPIOTD_COLLECTING;
     else state = GPIOTD_IDLE;
 
@@ -214,12 +204,6 @@ int main(int argc, char *argv[])
   flags = G_BUS_NAME_OWNER_FLAGS_REPLACE | G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT;
   owner_id = g_bus_own_name(G_BUS_TYPE_SESSION, "org.cau.gpiot", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL);
   g_printf("Setup gpio pin for gps flooding!\n");
-
-
-  /* if(preprocess_init_sigrok(8000000) < 0) { */
-  /*   g_printf("Could not initialize sigrok gpiot instance!\n"); */
-  /*   goto cleanup; */
-  /* } */
 
   while (1) { // TODO main loop
     g_main_context_iteration(main_context, TRUE);
