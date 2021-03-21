@@ -2,5 +2,6 @@
 #define CONFIGURATION_H
 
 #define RECEIVER_CHANNEL 7
+#define TIME_UNIT 1e15
 
 #endif /* CONFIGURATION_H */

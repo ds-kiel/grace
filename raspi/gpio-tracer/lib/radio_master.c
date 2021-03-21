@@ -41,7 +41,7 @@ static gpointer radio_master_thread_func(gpointer data) {
       // TODO ultimately this should happen after sending the packet to reduce any further
       // delay.
       timestamp_pair_t *unref_timestamp_pair = malloc(sizeof(timestamp_pair_t));
-      unref_timestamp_pair->reference_timestamp_ns = ref_timestamp;
+      unref_timestamp_pair->reference_timestamp_ps = ref_timestamp;
 
       g_async_queue_push(_timestamp_unref_queue , unref_timestamp_pair);
 

@@ -3,6 +3,7 @@
 #include <glib.h>
 #include <glib/gprintf.h>
 #include <types.h>
+#include <configuration.h>
 
 #include <cc1101-spidev/cc1101.h>
 #include <inttypes.h>
@@ -17,13 +18,13 @@ static gpointer radio_slave_thread_func(gpointer data) {
     int ret;
     int bytes_avail;
     timestamp_pair_t *reference_timestamp_pair = NULL; // add timestamp from preprocess to identify pair
-    timestamp_t *local_timestamp_ns = NULL;
+    timestamp_t *local_timestamp_ps = NULL;
 
-    /* local_timestamp_ns = g_async_queue_timeout_pop(_timestamp_unref_queue, 2000e3); // timeout 250 milliseconds */
-    local_timestamp_ns = g_async_queue_pop(_timestamp_unref_queue); // timeout 250 milliseconds
+    /* local_timestamp_ps = g_async_queue_timeout_pop(_timestamp_unref_queue, 2000e3); // timeout 250 milliseconds */
+    local_timestamp_ps = g_async_queue_pop(_timestamp_unref_queue); // timeout 250 milliseconds
 
     // timeout check wether transceiver is in correct state
-    if(local_timestamp_ns == NULL) {
+    if(local_timestamp_ps == NULL) {
       no_signal_cnt += 1;
 
       if (!(no_signal_cnt % 100)) {
@@ -65,8 +66,8 @@ static gpointer radio_slave_thread_func(gpointer data) {
           g_printf("Got reference seconds: %d\n", reference_timestamp_sec);
 
           reference_timestamp_pair = malloc(sizeof(timestamp_pair_t));
-          reference_timestamp_pair->local_timestamp_ns = *local_timestamp_ns;
-          reference_timestamp_pair->reference_timestamp_ns = reference_timestamp_sec * 1e9;
+          reference_timestamp_pair->local_timestamp_ps = *local_timestamp_ps;
+          reference_timestamp_pair->reference_timestamp_ps = reference_timestamp_sec * TIME_UNIT;
 
           g_async_queue_push(_timestamp_ref_queue, reference_timestamp_pair);
         }

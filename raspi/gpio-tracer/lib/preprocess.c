@@ -17,29 +17,26 @@
 void init_clock(preprocess_instance_t* process, guint32 frequency) {
   /* process->local_clock = malloc(sizeof(lclock_t)); */
   process->local_clock.nom_freq = frequency;
-  process->local_clock.nom_period = 1e9/(double) frequency;
+  process->local_clock.nom_period = TIME_UNIT/frequency; // internal units -> 1 picosecond
   process->local_clock.period = process->local_clock.nom_period;
   process->local_clock.state = WAIT;
+  process->local_clock.seq = 0;
+  process->local_clock.prev_seq = 0;
 }
 
 void tick(preprocess_instance_t *process) {
   lclock_t *clk = &(process->local_clock);
+
   if (clk->state > WAIT) {
-    /* guint32 period; */
-    /* guint32 x; */
-    /* guint32 y; */
-    /* guint32 z; */
-
-    /* x = clk->res_error; */
-    /* y = clk->offset/(TIME_LOOP_CONSTANT*clk->update_time); */
-    /* z = x / (t_c * 16); */
-    /* x -= z; */
-    /* clk->res_error = x; */
-
-    /* double z = clk->res_error/1000 < -1 ? -1 : clk->res_error/1000 > 1 ? 1 : clk->res_error/1000; */
-    /* clk->res_error -= z; */
-
-    clk->phase += clk->period;
+    if (clk->offset > clk->res_error) {
+      clk->phase += clk->period + clk->res_error;
+      clk->offset -= clk->res_error;
+    }
+    else {
+      clk->phase += clk->period + clk->offset;
+      clk->offset = 0;
+    }
+    clk->seq++;
   }
 }
 
@@ -51,75 +48,57 @@ static void handle_time_ref_signal(preprocess_instance_t *process) {
   timestamp_pair_t *reference_timestamp_pair = NULL;
 
   lclock_t *clk = &(process->local_clock);
-  /* *timestamp_local = clk->phase; */
-
   g_async_queue_push(process->timestamp_unref_queue, signal_cnt);
-  // read data from process
-  /* reference_timestamp_pair = g_async_queue_timeout_pop(process->timestamp_ref_queue, 1000e3); // if no answer after 500 milliseconds discard reference packet */
 
+  // read data from process
   reference_timestamp_pair = g_async_queue_pop(process->timestamp_ref_queue); // if no answer after 500 milliseconds discard reference packet
   if (reference_timestamp_pair != NULL) {
     switch (clk->state) {
     case WAIT: {
       clk->state = OFFSET;
-      clk->phase = reference_timestamp_pair->reference_timestamp_ns;
-      clk->prev_phase = clk->phase;
+      clk->phase = reference_timestamp_pair->reference_timestamp_ps;
+      clk->prev_ref_phase = clk->phase;
       break;
     }
     case OFFSET: {
       clk->state = FREQ;
-      clk->offset = clk->phase - reference_timestamp_pair->reference_timestamp_ns;
-      clk->freq = clk->nom_freq * (1 + clk->offset/(clk->phase - clk->prev_phase));
-      clk->period = 1e9/((double)clk->freq);
-
-      clk->phase = reference_timestamp_pair->reference_timestamp_ns;
-      clk->prev_phase = clk->phase;
+      clk->freq = clk->nom_freq * (double)clk->phase/reference_timestamp_pair->reference_timestamp_ps;
+      clk->period = TIME_UNIT/clk->freq;
+      clk->prev_ref_phase = reference_timestamp_pair->reference_timestamp_ps;
+      clk->phase = reference_timestamp_pair->reference_timestamp_ps;
+      clk->prev_seq = clk->seq;
       printf("period %f\n", clk->period);
       break;
     }
     case FREQ: {
-      ;timestamp_t offset;
+      timestamp_t offset;
       timestamp_t local_phase;
       timestamp_t ref_phase;
-      timestamp_t offset_delta; // under the assumption that the previous offset was eliminated completly not neccessary
-      timestamp_t local_delta;
 
-      ref_phase = reference_timestamp_pair->reference_timestamp_ns;
+      ref_phase = reference_timestamp_pair->reference_timestamp_ps;
       local_phase =  clk->phase;
-      offset = local_phase - ref_phase;
-      offset_delta = offset - clk->offset;
-
-      /* offset_delta = offset - clk->offset; // offset gain or reduction since last update */
-      local_delta = local_phase - clk->prev_phase;
+      offset = ref_phase - local_phase;
 
       // update elements
       clk->offset = offset;
-      clk->res_error = clk->offset;
-      clk->prev_phase = clk->phase;
-      clk->res_error = clk->offset;
+      clk->res_error = offset < -100e11 ? -100e11 : offset > 100e11 ? 100e11 : offset; // per second the PLL can remove 100microseconds
+      clk->res_error = clk->res_error/clk->nom_freq;
 
-      double P,I,D;
-      /* clk->freq += (double) offset/local_delta; */
-      clk->I += (double) offset;
-      /* clk->I = clk->I < -1e9 ? -1e9 : clk->I > 1e9 ? 1e9 : clk->I; */
-      clk->I = clk->I < -7e5 ? -7e5 : clk->I > 7e5 ? 7e5 : clk->I;
 
-      I = clk->I*0.000001;
-      P = offset*0.002;
-      /* P = offset/(32*3); */
-      D = offset_delta*0.0002;
-      /* clk->freq = clk->freq + P + D; */
-      clk->freq = clk->freq + P;
-      /* clk->freq = clk->freq + P; */
+      /* clk->I += (double) offset; */
+      // --- Working but not elegant ---
+      /* clk->I = clk->I < -3e15 ? -3e15 : clk->I > 3e15 ? 3e15 : clk->I; */
+      /* I = clk->I* (0.00000001); */
+      /* P = (offset*0.002) * 0.000005; */
+      /* clk->freq = clk->nom_freq + P + I; */
 
-      clk->period = 1e9/((double) clk->freq);
+      clk->freq = clk->nom_freq * (double)((clk->seq * clk->nom_period) - (clk->prev_seq * clk->nom_period))/(ref_phase - clk->prev_ref_phase);
+      clk->period = TIME_UNIT/clk->freq;
       /* clk->period -= I; */
+      clk->prev_ref_phase = ref_phase;
+      clk->prev_seq = clk->seq;
 
-
-      printf("offset %f, period %f", offset, clk->period);
-      printf("I: %f ", I);
-      printf("P: %f ", P);
-      printf("D: %f ", D);
+      printf("offset %" PRId64 "ns, period %" PRId64 "\n", (int64_t) offset/1000000, clk->period);
       break;
     }
 default:
@@ -402,7 +381,7 @@ int preprocess_init(preprocess_instance_t *process, GVariant *channel_modes, GAs
     return 1;
   }
 
-  if (preprocess_init_sigrok(process, 8000000) < 0) {
+  if (preprocess_init_sigrok(process, ANALYZER_FREQUENCY) < 0) {
     g_printf("Could not initialize sigrok instance!\n");
     return -1;
   };
@@ -439,7 +418,7 @@ int preprocess_init(preprocess_instance_t *process, GVariant *channel_modes, GAs
   process->timestamp_ref_queue = timestamp_ref_queue;
 
   // initialize local clock
-  init_clock(process, 8000000);
+  init_clock(process, ANALYZER_FREQUENCY);
 
   if ((ret = sr_session_start(process->sr_session)) != SR_OK) {
     printf("Could not start session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));

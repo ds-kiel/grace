@@ -7,6 +7,8 @@
 
 #define MAX_PERIOD_DEVIATION 30
 #define TIME_LOOP_CONSTANT 1024
+#define ANALYZER_FREQUENCY 8000000
+/* #define ANALYZER_FREQUENCY 12000000 */
 
 /* create a sigrok instance for fx2ladw compatible devices */
 
@@ -29,20 +31,24 @@ struct channel_mode {
 
 typedef struct lclock {
   guint32 nom_freq; // nominal frequency
-  double nom_period; // nominal period
+  timestamp_t nom_period; // nominal period
+
   timestamp_t phase; // current phase of clock
-  double period;
+  timestamp_t period;
 
   clock_state_t state;
-  timestamp_t prev_phase;
 
-  double P;
-  double I;
-  double D;
+  // used for open loop measurements to determine frequency dev.
+  timestamp_t prev_ref_phase;
+  timestamp_t prev_seq;
+  guint64 seq;
 
-  double freq; // frequency offset from nominal
-  double offset; // last offset from reference clock
-  double res_error; //residue error
+  timestamp_t I;
+
+  timestamp_t freq; // current running frequency
+  timestamp_t offset; // last offset from reference clock
+  timestamp_t res_error; //residue error
+
 } lclock_t;
 
 typedef struct preprocess_instance {

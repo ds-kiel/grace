@@ -17,11 +17,11 @@ static void correct_timestamps_in_range(const timestamp_pair_t *ts_1, const time
   trace_t *sample;
   double corr; // linear factor by which the timestamps have to be corrected
 
-  corr = ((double)(ts_2->reference_timestamp_ns-ts_1->reference_timestamp_ns))/(ts_2->local_timestamp_ns - ts_1->local_timestamp_ns);
-  /* g_printf("Fixing timestamps from %" PRIu64 " to %" PRIu64 " with corr: %f\n", ts_1->local_timestamp_ns, ts_2->local_timestamp_ns, corr); */
-  while ((sample = g_async_queue_pop(_trace_queue))->timestamp_ns < ts_2->local_timestamp_ns) {
-    if (sample->timestamp_ns > ts_1->local_timestamp_ns) {
-      timestamp_t corrected_timestamp = ts_1->reference_timestamp_ns + (sample->timestamp_ns - ts_1->local_timestamp_ns)*corr;
+  corr = ((double)(ts_2->reference_timestamp_ps-ts_1->reference_timestamp_ps))/(ts_2->local_timestamp_ps - ts_1->local_timestamp_ps);
+  /* g_printf("Fixing timestamps from %" PRIu64 " to %" PRIu64 " with corr: %f\n", ts_1->local_timestamp_ps, ts_2->local_timestamp_ps, corr); */
+  while ((sample = g_async_queue_pop(_trace_queue))->timestamp_ns < ts_2->local_timestamp_ps) {
+    if (sample->timestamp_ns > ts_1->local_timestamp_ps) {
+      timestamp_t corrected_timestamp = ts_1->reference_timestamp_ps + (sample->timestamp_ns - ts_1->local_timestamp_ps)*corr;
       /* printf("New corrected timestamp: %" PRIu64 "\n"); */
       g_fprintf(_fp, "%" PRIu64 ",%d,%d\n", corrected_timestamp, sample->channel, sample->state);
       free(sample);
