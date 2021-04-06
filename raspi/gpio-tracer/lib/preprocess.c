@@ -1,10 +1,9 @@
 #include <preprocess.h>
 
-#include <postprocess.h>
 #include <types.h>
+#include <output_module.h>
 #include <radio.h>
 #include <configuration.h>
-
 
 #include <glib/gprintf.h>
 
@@ -98,7 +97,8 @@ static void handle_time_ref_signal(preprocess_instance_t *process) {
       clk->prev_ref_phase = ref_phase;
       clk->prev_seq = clk->seq;
 
-      printf("offset %" PRId64 "ns, period %" PRId64 "\n", (int64_t) offset/1000000, clk->period);
+      printf("offset %" PRId64 "ns, period %" PRId64 "\n", (int64_t) offset/100000000, clk->period);
+      /* printf("offset %" PRId64 "ns, period %" PRId64 "\n", (int64_t) offset/((guint64)(TIME_UNIT-1e9)), clk->period); */
       break;
     }
 default:
@@ -117,7 +117,8 @@ static inline void handle_gpio_signal(preprocess_instance_t *process, uint8_t st
   trace->state = state;
   trace->timestamp_ns = process->local_clock.phase;
 
-  g_async_queue_push(process->trace_queue, trace);
+  // print trace using output module write function
+  (*process->output->write)(process->output, trace);
 }
 
 void data_feed_callback(const struct sr_dev_inst *sdi,
@@ -230,7 +231,6 @@ static int preprocess_kill_instance(preprocess_instance_t *process) {
 void session_stopped_callback(void* data) {
   preprocess_instance_t* process= (preprocess_instance_t*) data;
   g_printf("Session has stoppped!\n");
-  close_output_file();
   process->state = STOPPED;
   preprocess_kill_instance(process);
 }
@@ -373,7 +373,7 @@ gboolean preprocess_running(preprocess_instance_t* process) {
   return process->state == RUNNING;
 }
 
-int preprocess_init(preprocess_instance_t *process, GVariant *channel_modes, GAsyncQueue *trace_queue, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
+int preprocess_init(preprocess_instance_t *process, output_module_t *output, GVariant *channel_modes, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
   int ret;
 
   if(process->state == RUNNING) {
@@ -413,9 +413,9 @@ int preprocess_init(preprocess_instance_t *process, GVariant *channel_modes, GAs
   g_variant_unref(channel_modes);
 
   // set queue
-  process->trace_queue = trace_queue;
   process->timestamp_unref_queue = timestamp_unref_queue;
   process->timestamp_ref_queue = timestamp_ref_queue;
+  process->output = output;
 
   // initialize local clock
   init_clock(process, ANALYZER_FREQUENCY);

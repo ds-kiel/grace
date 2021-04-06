@@ -1,4 +1,4 @@
-#include <radio-slave.h>
+#include <radio.h>
 #include <stdio.h>
 #include <glib.h>
 #include <glib/gprintf.h>
@@ -12,7 +12,7 @@
 static GAsyncQueue *_timestamp_ref_queue; // return queue for reference timestamps
 static GAsyncQueue *_timestamp_unref_queue; // process incoming gpio signals captured by the logic analyzer
 
-static gpointer radio_slave_thread_func(gpointer data) {
+static gpointer radio_thread_func(gpointer data) {
   static uint8_t no_signal_cnt = 0;
   while(1) {
     int ret;
@@ -80,7 +80,7 @@ static gpointer radio_slave_thread_func(gpointer data) {
   }
 }
 
-int radio_slave_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
+int radio_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
   int handle; // handle system not implemented, use structure instead for one session?
 
   _timestamp_unref_queue  = timestamp_unref_queue;
@@ -125,7 +125,7 @@ int radio_slave_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_
   cc1101_command_strobe(header_command_sidle);
 }
 
-void radio_slave_start_reception() {
+void radio_start_reception() {
   cc1101_command_strobe(header_command_sfrx);
   // calibrate the receiver once, after this we will calibrate every 4th RX <-> IDLE transition (see MCSM0)
   cc1101_command_strobe(header_command_scal);
@@ -136,5 +136,5 @@ void radio_slave_start_reception() {
 
   cc1101_set_receive();
 
-  g_thread_new("radio_slave", radio_slave_thread_func, NULL);
+  g_thread_new("radio", radio_thread_func, NULL);
 }

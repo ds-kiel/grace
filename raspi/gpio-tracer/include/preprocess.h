@@ -3,11 +3,13 @@
 
 #include <glib.h>
 #include <libsigrok/libsigrok.h>
+#include <output_module.h>
 #include <types.h>
 
 #define MAX_PERIOD_DEVIATION 30
 #define TIME_LOOP_CONSTANT 1024
 #define ANALYZER_FREQUENCY 8000000
+
 /* #define ANALYZER_FREQUENCY 12000000 */
 
 /* create a sigrok instance for fx2ladw compatible devices */
@@ -65,11 +67,13 @@ typedef struct preprocess_instance {
   GAsyncQueue *timestamp_unref_queue;
   GAsyncQueue *timestamp_ref_queue;
 
+  output_module_t *output;
+
   lclock_t local_clock;
 } preprocess_instance_t;
 
 /* --- proto --- */
-int preprocess_init(preprocess_instance_t *process, GVariant *channel_modes, GAsyncQueue *trace_queue, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue);
+int preprocess_init(preprocess_instance_t *process, output_module_t *output, GVariant *channel_modes, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue);
 int preprocess_stop_instance(preprocess_instance_t *process);
 
 // TODO rename to something more meaninfull

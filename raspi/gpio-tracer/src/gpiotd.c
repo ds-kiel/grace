@@ -3,11 +3,10 @@
 #include "gpiot.h"
 
 #include <preprocess.h>
-#include <postprocess.h>
+#include <chunked_output.h>
 #include <types.h>
 #include <inttypes.h>
-#include <radio-master.h>
-#include <radio-slave.h>
+#include <radio.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <gio/gio.h>
@@ -20,6 +19,7 @@ static GAsyncQueue *_trace_queue; // store queues so we can later safely unref t
 static GAsyncQueue *_timestamp_unref_queue;
 static GAsyncQueue *_timestamp_ref_queue;
 static preprocess_instance_t *preprocess_task;
+static chunked_output_t *chunked_output;
 
 /* Introspection data for the service we are exporting */
 static const gchar introspection_xml[] =
@@ -58,10 +58,13 @@ static int start_tasks(GVariant* channel_modes, const gchar* nodeType) {
   _timestamp_ref_queue   = g_async_queue_new();
 
   preprocess_task = malloc(sizeof(preprocess_instance_t));
-  radio_slave_init(_timestamp_unref_queue, _timestamp_ref_queue);
-  preprocess_init(preprocess_task, channel_modes, _trace_queue, _timestamp_unref_queue, _timestamp_ref_queue);
-  postprocess_init("/usr/testbed/sample_data/test1.csv", _trace_queue);
-  radio_slave_start_reception();
+  chunked_output = chunked_output_new();
+  radio_init(_timestamp_unref_queue, _timestamp_ref_queue);
+  chunked_output_init(chunked_output, "/usr/testbed/sample_data/");
+  preprocess_init(preprocess_task, (output_module_t*) chunked_output, channel_modes, _timestamp_unref_queue, _timestamp_ref_queue);
+
+  // start thread
+  radio_start_reception();
 }
 
 static int stop_tasks() {

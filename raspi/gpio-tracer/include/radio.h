@@ -7,4 +7,7 @@
 
 GAsyncQueue *reference_timestamp_queue;
 
+int radio_init();
+void radio_start_reception();
+
 #endif /* RADIO_H */
