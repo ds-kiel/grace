@@ -18,7 +18,7 @@ static gpointer radio_thread_func(gpointer data) {
     int ret;
     int bytes_avail;
     timestamp_pair_t *reference_timestamp_pair = NULL; // add timestamp from preprocess to identify pair
-    timestamp_t *local_timestamp_ps = NULL;
+    ptime_t *local_timestamp_ps = NULL;
 
     /* local_timestamp_ps = g_async_queue_timeout_pop(_timestamp_unref_queue, 2000e3); // timeout 250 milliseconds */
     local_timestamp_ps = g_async_queue_pop(_timestamp_unref_queue); // timeout 250 milliseconds

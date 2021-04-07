@@ -26,8 +26,8 @@ void init_clock(preprocess_instance_t* process, guint32 frequency) {
 void tick(preprocess_instance_t *process) {
   lclock_t *clk = &(process->local_clock);
 
-  if (clk->state > WAIT) {
-    if (clk->offset > clk->res_error) {
+  if (G_LIKELY(clk->state > WAIT)) {
+    if (G_LIKELY(clk->offset > clk->res_error)) {
       clk->phase += clk->period + clk->res_error;
       clk->offset -= clk->res_error;
     }
@@ -41,9 +41,9 @@ void tick(preprocess_instance_t *process) {
 
 // time reference signal handling
 static void handle_time_ref_signal(preprocess_instance_t *process) {
-  timestamp_t *signal_cnt = malloc(sizeof(timestamp_t)); // TODO
+  ptime_t *signal_cnt = malloc(sizeof(ptime_t)); // TODO
   *signal_cnt = 1;
-  timestamp_t *timestamp_local = NULL;
+  ptime_t *timestamp_local = NULL;
   timestamp_pair_t *reference_timestamp_pair = NULL;
 
   lclock_t *clk = &(process->local_clock);
@@ -70,9 +70,9 @@ static void handle_time_ref_signal(preprocess_instance_t *process) {
       break;
     }
     case FREQ: {
-      timestamp_t offset;
-      timestamp_t local_phase;
-      timestamp_t ref_phase;
+      ptime_t offset;
+      ptime_t local_phase;
+      ptime_t ref_phase;
 
       ref_phase = reference_timestamp_pair->reference_timestamp_ps;
       local_phase =  clk->phase;
@@ -80,16 +80,8 @@ static void handle_time_ref_signal(preprocess_instance_t *process) {
 
       // update elements
       clk->offset = offset;
-      clk->res_error = offset < -100e11 ? -100e11 : offset > 100e11 ? 100e11 : offset; // per second the PLL can remove 100microseconds
+      clk->res_error = offset < -TIME_UNIT ? -TIME_UNIT : offset > TIME_UNIT ? TIME_UNIT : offset; // per second the PLL can remove 100microseconds
       clk->res_error = clk->res_error/clk->nom_freq;
-
-
-      /* clk->I += (double) offset; */
-      // --- Working but not elegant ---
-      /* clk->I = clk->I < -3e15 ? -3e15 : clk->I > 3e15 ? 3e15 : clk->I; */
-      /* I = clk->I* (0.00000001); */
-      /* P = (offset*0.002) * 0.000005; */
-      /* clk->freq = clk->nom_freq + P + I; */
 
       clk->freq = clk->nom_freq * (double)((clk->seq * clk->nom_period) - (clk->prev_seq * clk->nom_period))/(ref_phase - clk->prev_ref_phase);
       clk->period = TIME_UNIT/clk->freq;
@@ -97,7 +89,7 @@ static void handle_time_ref_signal(preprocess_instance_t *process) {
       clk->prev_ref_phase = ref_phase;
       clk->prev_seq = clk->seq;
 
-      printf("offset %" PRId64 "ns, period %" PRId64 "\n", (int64_t) offset/100000000, clk->period);
+      g_printf("offset %" G_GINT64_FORMAT "fs\n", offset);
       /* printf("offset %" PRId64 "ns, period %" PRId64 "\n", (int64_t) offset/((guint64)(TIME_UNIT-1e9)), clk->period); */
       break;
     }
@@ -112,13 +104,16 @@ default:
 
 // GPIO signal handling
 static inline void handle_gpio_signal(preprocess_instance_t *process, uint8_t state, uint8_t channel) {
-  trace_t *trace = malloc(sizeof(trace_t));
-  trace->channel = channel;
-  trace->state = state;
-  trace->timestamp_ns = process->local_clock.phase;
+  /* trace_t *trace = malloc(sizeof(trace_t)); */
+  trace_t trace;
+  trace.channel = channel;
+  trace.state = state;
+  trace.timestamp_ns = process->local_clock.phase;
 
   // print trace using output module write function
-  (*process->output->write)(process->output, trace);
+  (*process->output->write)(process->output, &trace);
+
+  /* g_printf("Writing trace\n!"); */
 }
 
 void data_feed_callback(const struct sr_dev_inst *sdi,
@@ -127,7 +122,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
   static gboolean initial_df_logic_packet = TRUE;
   static uint8_t last;
   preprocess_instance_t *process = (preprocess_instance_t*) cb_data;
-  /* static timestamp_t first_sync_timestamp; */
+  /* static ptime_t first_sync_timestamp; */
 
   switch (packet->type) {
     case SR_DF_HEADER: {
@@ -151,7 +146,13 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
         if((data[i] & process->active_channel_mask) != last) {
           for (size_t k = 0; k < process->channel_count ; k++) {
             uint8_t k_channel_mask = (1<<process->channels[k].channel);
-            int8_t delta = ((last&k_channel_mask)>>process->channels[k].channel) - ((data[i]&k_channel_mask)>>process->channels[k].channel);
+            int8_t delta;
+            if (G_LIKELY(i > 0)) {
+              delta = ((data[i-1]&k_channel_mask)>>process->channels[k].channel) - ((data[i]&k_channel_mask)>>process->channels[k].channel);
+            } else {
+              delta = ((last&k_channel_mask)>>process->channels[k].channel) - ((data[i]&k_channel_mask)>>process->channels[k].channel);
+            }
+
             uint8_t state;
             if(delta) {
               if(process->channels[k].channel == RECEIVER_CHANNEL) {
@@ -171,7 +172,73 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
             }
           }
         }
-        last = data[i] & process->active_channel_mask;
+        tick(process);
+      }
+      last = data[payload->length-1] & process->active_channel_mask;
+
+      break;
+    }
+    case SR_DF_END: {
+      g_printf("datastream from device ended\n");
+      break;
+    }
+    default:
+      printf("unhandled payload type: %d\n", packet->type);
+      break;
+  }
+}
+
+void data_feed_callback_efficient(const struct sr_dev_inst *sdi,
+                                            const struct sr_datafeed_packet *packet,
+                                            void *cb_data) {
+    static gboolean initial_df_logic_packet = TRUE;
+  static uint8_t last;
+  preprocess_instance_t *process = (preprocess_instance_t*) cb_data;
+  /* static ptime_t first_sync_timestamp; */
+
+  switch (packet->type) {
+    case SR_DF_HEADER: {
+      struct sr_datafeed_header *payload = (struct sr_datafeed_header*) packet->payload;
+      printf("got datafeed header: feed version %d, startime %lu\n", payload->feed_version, payload->starttime.tv_usec);
+      initial_df_logic_packet = TRUE;
+
+      break;
+    }
+    case SR_DF_LOGIC: {
+      struct sr_datafeed_logic *payload = (struct sr_datafeed_logic*) packet->payload;
+      uint8_t* data = payload->data;
+
+      if(initial_df_logic_packet) {
+        last = data[0];
+        initial_df_logic_packet = FALSE;
+      }
+
+      for(size_t i = 0; i < payload->length; i++) {
+        uint8_t curr = data[i];
+        /* printf("Got datafeed payload of length %" PRIu64 " Unit size is %" PRIu16 " byte\n", payload->length, payload->unitsize); */
+        if(curr != last) {
+          int16_t delta = (last - curr);
+          /* for (size_t k = 0; k < process->channel_count; k++) { */
+          /* uint8_t k_channel_mask = (1<<process->channels[k].channel); */
+          uint8_t state;
+          if(delta) {
+            if(G_UNLIKELY(((last&(1<<RECEIVER_CHANNEL)) - (curr&(1<<RECEIVER_CHANNEL))) < 0)) {
+              handle_time_ref_signal(process);
+            } else {
+              // determine wether signal was falling or rising
+              /* if((process->channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal */
+              /*   state = 0; */
+              /* } else if (process->channels[k].mode & MATCH_RISING) {  // rising signal */
+              /*   state = 1; */
+              /* } */
+
+              handle_gpio_signal(process, state, process->channels[2].channel);
+            }
+            /* } */
+          }
+          /* last = curr; */
+        }
+        last = curr;
         tick(process);
       }
       break;
@@ -184,6 +251,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
       printf("unhandled payload type: %d\n", packet->type);
       break;
   }
+
 }
 
 int preprocess_stop_instance(preprocess_instance_t *process) {
@@ -351,7 +419,7 @@ static int preprocess_init_sigrok(preprocess_instance_t *process, guint32 sample
   }
 
   void* data = (void*) process;
-  if ((ret = sr_session_datafeed_callback_add(process->sr_session, &data_feed_callback, data)) != SR_OK) {
+  if ((ret = sr_session_datafeed_callback_add(process->sr_session, &data_feed_callback_efficient, data)) != SR_OK) {
     printf("Could not add datafeed callback to instance (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret));
     return -1;
   }

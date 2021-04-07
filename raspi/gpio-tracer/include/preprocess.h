@@ -6,13 +6,7 @@
 #include <output_module.h>
 #include <types.h>
 
-#define MAX_PERIOD_DEVIATION 30
-#define TIME_LOOP_CONSTANT 1024
 #define ANALYZER_FREQUENCY 8000000
-
-/* #define ANALYZER_FREQUENCY 12000000 */
-
-/* create a sigrok instance for fx2ladw compatible devices */
 
 typedef enum clock_state {
   WAIT, // wait for reference signal
@@ -33,23 +27,21 @@ struct channel_mode {
 
 typedef struct lclock {
   guint32 nom_freq; // nominal frequency
-  timestamp_t nom_period; // nominal period
+  ptime_t nom_period; // nominal period
 
-  timestamp_t phase; // current phase of clock
-  timestamp_t period;
+  ptime_t phase; // current phase of clock
+  ptime_t period;
 
   clock_state_t state;
 
   // used for open loop measurements to determine frequency dev.
-  timestamp_t prev_ref_phase;
-  timestamp_t prev_seq;
+  ptime_t prev_ref_phase;
+  ptime_t prev_seq;
   guint64 seq;
 
-  timestamp_t I;
-
-  timestamp_t freq; // current running frequency
-  timestamp_t offset; // last offset from reference clock
-  timestamp_t res_error; //residue error
+  ptime_t freq; // current running frequency
+  ptime_t offset; // last offset from reference clock
+  ptime_t res_error; //residue error
 
 } lclock_t;
 
