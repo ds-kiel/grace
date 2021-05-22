@@ -16,7 +16,7 @@
 void init_clock(preprocess_instance_t* process, guint32 frequency) {
   /* process->local_clock = malloc(sizeof(lclock_t)); */
   process->local_clock.nom_freq = frequency;
-  process->local_clock.nom_period = TIME_UNIT/frequency; // internal units -> 1 picosecond
+  process->local_clock.nom_period = TIME_UNIT/frequency;
   process->local_clock.period = process->local_clock.nom_period;
   process->local_clock.state = WAIT;
   process->local_clock.seq = 0;
@@ -47,10 +47,12 @@ static void handle_time_ref_signal(preprocess_instance_t *process) {
   timestamp_pair_t *reference_timestamp_pair = NULL;
 
   lclock_t *clk = &(process->local_clock);
+  g_debug("pushing new unreferenced timestamp to queue");
   g_async_queue_push(process->timestamp_unref_queue, signal_cnt);
 
   // read data from process
-  reference_timestamp_pair = g_async_queue_pop(process->timestamp_ref_queue); // if no answer after 500 milliseconds discard reference packet
+  g_debug("reading referenced timestamp to queue");
+  reference_timestamp_pair = g_async_queue_pop(process->timestamp_ref_queue);
   if (reference_timestamp_pair != NULL) {
     switch (clk->state) {
     case WAIT: {
@@ -90,6 +92,7 @@ static void handle_time_ref_signal(preprocess_instance_t *process) {
       clk->prev_seq = clk->seq;
 
       g_printf("offset %" G_GINT64_FORMAT "fs\n", offset);
+      g_printf("offset %" G_GINT64_FORMAT "ns\n", offset/((int)1e6));
       /* printf("offset %" PRId64 "ns, period %" PRId64 "\n", (int64_t) offset/((guint64)(TIME_UNIT-1e9)), clk->period); */
       break;
     }
@@ -191,7 +194,7 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
 void data_feed_callback_efficient(const struct sr_dev_inst *sdi,
                                             const struct sr_datafeed_packet *packet,
                                             void *cb_data) {
-    static gboolean initial_df_logic_packet = TRUE;
+  static gboolean initial_df_logic_packet = TRUE;
   static uint8_t last;
   preprocess_instance_t *process = (preprocess_instance_t*) cb_data;
   /* static ptime_t first_sync_timestamp; */
@@ -438,6 +441,9 @@ static int preprocess_init_sigrok(preprocess_instance_t *process, guint32 sample
 }
 
 gboolean preprocess_running(preprocess_instance_t* process) {
+  if (process == NULL)
+    return 0;
+
   return process->state == RUNNING;
 }
 

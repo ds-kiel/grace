@@ -3,5 +3,6 @@
 
 #define RECEIVER_CHANNEL 7
 #define TIME_UNIT 1e15
+#define G_LOG_DOMAIN "GPIOTD"
 
 #endif /* CONFIGURATION_H */

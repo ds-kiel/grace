@@ -7,12 +7,18 @@
 #include <types.h>
 #include <inttypes.h>
 #include <radio.h>
-#include <stdio.h>
-#include <stdlib.h>
+
 #include <gio/gio.h>
 #include <glib.h>
 #include <glib/gprintf.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
 
 static GDBusNodeInfo* introspection_data = NULL;
 static GAsyncQueue *_trace_queue; // store queues so we can later safely unref them
@@ -20,6 +26,8 @@ static GAsyncQueue *_timestamp_unref_queue;
 static GAsyncQueue *_timestamp_ref_queue;
 static preprocess_instance_t *preprocess_task;
 static chunked_output_t *chunked_output;
+
+static gchar *trace_path;
 
 /* Introspection data for the service we are exporting */
 static const gchar introspection_xml[] =
@@ -29,8 +37,7 @@ static const gchar introspection_xml[] =
   "    <annotation name='org.cau.gpiot.Annotation' value='AlsoOnInterface'/>"
   "    <method name='Start'>"
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
-  "      <arg type='s' name='logPath' direction='in'/>"
-  "      <arg type='s' name='nodeType' direction='in'/>"
+  "      <arg type='s' name='jobLogDir' direction='in'/>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
   "    <method name='Stop'>"
@@ -41,37 +48,49 @@ static const gchar introspection_xml[] =
   "      <annotation name='org.cau.gpiot.Annotation' value='OnMethod'/>"
   "      <arg type='i' name='result' direction='out'/>"
   "    </method>"
-  "    <signal name='Something'>"
-  "      <annotation name='org.cau.gpiot.Annotation' value='Onsignal'/>"
-  "      <arg type='d' name='speed_in_mph'/>"
-  "      <arg type='s' name='speed_as_string'>"
-  "        <annotation name='org.cau.gpiot.Annotation' value='OnArg_NonFirst'/>"
-  "      </arg>"
-  "    </signal>"
   "    <property type='s' name='Status' access='read'/>"
   "  </interface>"
   "</node>";
 
-static int start_tasks(GVariant* channel_modes, const gchar* nodeType) {
+
+static int start_tasks(GVariant* channel_modes) {
+  struct stat st = {0};
+
   _trace_queue           = g_async_queue_new();
   _timestamp_unref_queue = g_async_queue_new();
   _timestamp_ref_queue   = g_async_queue_new();
 
+  if (stat(trace_path, &st)) {
+    g_printf("creating path for storing traces!\n");
+    if (mkdir(trace_path, 0700) < 0) {
+      g_printf("could not create/open target trace directory!\n");
+      return -1;
+    }
+  }
+
+  // TODO add error handling
+  /* "/usr/testbed/sample_data/" */
   preprocess_task = malloc(sizeof(preprocess_instance_t));
   chunked_output = chunked_output_new();
   radio_init(_timestamp_unref_queue, _timestamp_ref_queue);
-  chunked_output_init(chunked_output, "/usr/testbed/sample_data/");
+  chunked_output_init(chunked_output, trace_path);
   preprocess_init(preprocess_task, (output_module_t*) chunked_output, channel_modes, _timestamp_unref_queue, _timestamp_ref_queue);
 
   // start thread
   radio_start_reception();
+
+  return 0;
 }
 
 static int stop_tasks() {
   preprocess_stop_instance(preprocess_task);
+  chunked_output_deinit(chunked_output);
+
   g_async_queue_unref(_trace_queue          );
   g_async_queue_unref(_timestamp_unref_queue);
   g_async_queue_unref(_timestamp_ref_queue  );
+
+  return 0;
 }
 
 // dbus handlers
@@ -87,13 +106,11 @@ static void handle_method_call(GDBusConnection *connnection,
   g_printf("handle Method invocation with %s\n", method_name);
   if (!g_strcmp0(method_name, "Start")) {
     int ret;
-    const gchar *logpath;
-    const gchar *nodeType;
 
     g_printf("Invocation: Start\n");
 
-    g_variant_get(parameters, "(&s&s)", &logpath, &nodeType);
-    g_printf("Parameters: %s %s\n", logpath, nodeType);
+    g_variant_get(parameters, "(&s)", &trace_path);
+    g_printf("Parameters: %s\n", trace_path);
 
     GVariantBuilder* channel_modes_builder = g_variant_builder_new(G_VARIANT_TYPE("a(yy)"));
     GVariant* channel_modes;
@@ -110,12 +127,12 @@ static void handle_method_call(GDBusConnection *connnection,
     g_variant_builder_unref(channel_modes_builder);
 
     g_print(g_variant_print(channel_modes,TRUE));
-    if ((ret = start_tasks(channel_modes, nodeType)) < 0) {
-      result = g_strdup_printf("Unable to run instance");
+    if ((ret = start_tasks(channel_modes)) < 0) {
+      result = g_strdup_printf("unable to run instance");
     } else if (ret > 0) {
-      result = g_strdup_printf("Instance already running");
+      result = g_strdup_printf("instance already running");
     } else {
-      result = g_strdup_printf("Started collection on device");
+      result = g_strdup_printf("started collection on device");
     }
 
     g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
@@ -126,12 +143,12 @@ static void handle_method_call(GDBusConnection *connnection,
     if (preprocess_running(preprocess_task)) {
       int ret;
       if ((ret = stop_tasks()) >= 0) {
-        result = g_strdup_printf("Stopped");
+        result = g_strdup_printf("stopped running instance");
       } else {
-        result = g_strdup_printf("Could not stop instance");
+        result = g_strdup_printf("could not stop instance");
       }
     } else {
-      result = g_strdup_printf("No instance running");
+      result = g_strdup_printf("no instance running");
     }
     g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
   } else if (!g_strcmp0(method_name, "getState")) {

@@ -15,14 +15,12 @@
 
 static gboolean start = FALSE;
 static gboolean stop = FALSE;
-static gchar* logpath = NULL;
-static gchar* nodeType = "master";
+static gchar *trace_dir = NULL;
 
 static const GOptionEntry entries[] = {
-  {"start",      's'    , 0, G_OPTION_ARG_NONE,     &start      , "Tell daemon to start gpio tracing",                 NULL},
-  {"nodeType",   's'    , 0, G_OPTION_ARG_STRING,     &nodeType      , "type of daemon {master, slave})",                 NULL},
-  {"stop",       'k'    , 0, G_OPTION_ARG_NONE,     &stop       , "Tell daemon to start gpio tracing",                 NULL},
-  {"logpath",    'l'    , 0, G_OPTION_ARG_FILENAME, &logpath    , "path where the trace logs should be stored ",       NULL},
+  {"start",      's'    , 0, G_OPTION_ARG_NONE,     &start      , "Tell daemon to start gpio tracing",           NULL},
+  {"stop",       'k'    , 0, G_OPTION_ARG_NONE,     &stop       , "Tell daemon to start gpio tracing",           NULL},
+  {"tracedir",   'l'    , 0, G_OPTION_ARG_STRING,   &trace_dir  , "directory where traces will be written to",   NULL},
   { NULL }
 };
 
@@ -46,7 +44,8 @@ static const gchar* daemon_call_control_interface_method(GDBusConnection *connec
 
   method_call_message = g_dbus_message_new_method_call(
       name_owner, "/org/cau/gpiot/Controller", "org.cau.gpiot.ControllerInterface",
-      method);
+      method
+  );
 
   g_dbus_message_set_body(method_call_message,
                           parameters);
@@ -85,20 +84,20 @@ static void on_name_appeared(GDBusConnection *connection, const gchar *name,
   const gchar* method;
 
   error = NULL;
-
   g_printf("name %s appeared\n", name);
 
   if(start) {
     method = "Start";
-    const gchar* _logpath = NULL;
-    if (logpath != NULL) {
-      _logpath = logpath;
-    } else {
-      _logpath = "/tmp/gpio-default-log.csv"; // TODO don't output if no logpath is passed
+
+    if (trace_dir == NULL) {
+      trace_dir = "/tmp/gpio-traces/";
+      // the daemon is responsible to check wether the trace directory exists and is writeable
     }
-    parameters = g_variant_new("(ss)", _logpath, nodeType); // TODO use _ prefix for 'globals'
+
+    parameters = g_variant_new("(s)", trace_dir);
   } else if(stop) {
     method = "Stop";
+    parameters = g_variant_new("()");
   }
 
   g_printf("%s/n", daemon_call_control_interface_method(connection, name_owner, method, parameters, &error));
