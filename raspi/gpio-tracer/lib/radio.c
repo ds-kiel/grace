@@ -8,14 +8,17 @@
 #include <inttypes.h>
 #include <time.h>
 
-
+static GThread *radio_thread = NULL;
+static guint8 _running = 0;
 
 static GAsyncQueue *_timestamp_ref_queue; // return queue for reference timestamps
 static GAsyncQueue *_timestamp_unref_queue; // process incoming gpio signals captured by the logic analyzer
 
 static gpointer radio_thread_func(gpointer data) {
   static uint8_t no_signal_cnt = 0;
-  while(1) {
+
+  _running = 1;
+  while(_running) {
     int ret;
     int bytes_avail;
     timestamp_pair_t *reference_timestamp_pair = NULL; // add timestamp from preprocess to identify pair
@@ -57,6 +60,9 @@ static gpointer radio_thread_func(gpointer data) {
         if(!bytes_avail) {
           cc1101_set_receive();
         }
+      } else if (IS_STATE(cc1101_get_chip_state(), RXFIFO_OVERFLOW)) {
+        cc1101_command_strobe(header_command_sfrx);
+        cc1101_set_receive();
       }
     } else {
       no_signal_cnt = 0;
@@ -76,7 +82,7 @@ static gpointer radio_thread_func(gpointer data) {
           cc1101_read_rx_fifo(read_buf, bytes_avail);
           memcpy(&reference_timestamp_sec, read_buf+1, sizeof(uint32_t));
 
-          g_debug("Got reference seconds: %d\n", reference_timestamp_sec);
+          g_message("Got reference seconds: %d", reference_timestamp_sec);
 
           reference_timestamp_pair = malloc(sizeof(timestamp_pair_t));
           reference_timestamp_pair->local_timestamp_ps = *local_timestamp_ps;
@@ -105,7 +111,7 @@ int radio_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_qu
   if (handle < 0) return 0;
 
   while(IS_STATE(cc1101_get_chip_state(), SETTLING)) {
-    g_debug("device is settling\n");
+    g_debug("device is settling");
   }
 
   unsigned char PKTCTRL1_old;
@@ -140,16 +146,24 @@ int radio_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_qu
   cc1101_command_strobe(header_command_sidle);
 }
 
+int radio_deinit() {
+  // TODO implement me
+  _running = 0;
+  g_thread_join(radio_thread);
+
+  return 1;
+}
+
 void radio_start_reception() {
   cc1101_command_strobe(header_command_sfrx);
   // calibrate the receiver once, after this we will calibrate every 4th RX <-> IDLE transition (see MCSM0)
   cc1101_command_strobe(header_command_scal);
 
   while(IS_STATE(cc1101_get_chip_state(), CALIBRATE)) {
-    g_debug("device is calibrating\n");
+    g_debug("device is calibrating");
   }
 
   cc1101_set_receive();
 
-  g_thread_new("radio", radio_thread_func, NULL);
+  radio_thread = g_thread_new("radio", radio_thread_func, NULL);
 }

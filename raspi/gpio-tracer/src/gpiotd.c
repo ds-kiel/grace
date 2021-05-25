@@ -83,6 +83,7 @@ static int start_tasks(GVariant* channel_modes) {
 }
 
 static int stop_tasks() {
+  radio_deinit();
   preprocess_stop_instance(preprocess_task);
   chunked_output_deinit(chunked_output);
 

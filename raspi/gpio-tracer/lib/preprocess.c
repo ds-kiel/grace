@@ -51,9 +51,9 @@ static void handle_time_ref_signal(preprocess_instance_t *process) {
   g_async_queue_push(process->timestamp_unref_queue, signal_cnt);
 
   // read data from process
-  g_debug("reading referenced timestamp to queue");
+  g_debug("reading referenced timestamp from queue");
   reference_timestamp_pair = g_async_queue_pop(process->timestamp_ref_queue);
-  if (reference_timestamp_pair != NULL) {
+  if (reference_timestamp_pair != NULL) { // happens only in case g_async_queue_pop with timeout is used
     switch (clk->state) {
     case WAIT: {
       clk->state = OFFSET;
@@ -68,7 +68,7 @@ static void handle_time_ref_signal(preprocess_instance_t *process) {
       clk->prev_ref_phase = reference_timestamp_pair->reference_timestamp_ps;
       clk->phase = reference_timestamp_pair->reference_timestamp_ps;
       clk->prev_seq = clk->seq;
-      printf("period %f\n", clk->period);
+      g_message("period %f\n", clk->period);
       break;
     }
     case FREQ: {
@@ -91,8 +91,8 @@ static void handle_time_ref_signal(preprocess_instance_t *process) {
       clk->prev_ref_phase = ref_phase;
       clk->prev_seq = clk->seq;
 
-      g_printf("offset %" G_GINT64_FORMAT "fs\n", offset);
-      g_printf("offset %" G_GINT64_FORMAT "ns\n", offset/((int)1e6));
+      g_debug("offset %" G_GINT64_FORMAT "fs", offset);
+      g_message("offset %" G_GINT64_FORMAT "ns", offset/((int)1e6));
       /* printf("offset %" PRId64 "ns, period %" PRId64 "\n", (int64_t) offset/((guint64)(TIME_UNIT-1e9)), clk->period); */
       break;
     }
@@ -100,7 +100,7 @@ default:
       break;
     }
   } else {
-    g_printf("Discarded reference signal. Transceiver took to long to answer! \n");
+    g_debug("Discarded reference signal. Transceiver took to long to answer! \n");
   }
   free(signal_cnt);
 }
@@ -113,6 +113,7 @@ static inline void handle_gpio_signal(preprocess_instance_t *process, uint8_t st
   trace.state = state;
   trace.timestamp_ns = process->local_clock.phase;
 
+  g_debug("writing trace to file");
   // print trace using output module write function
   (*process->output->write)(process->output, &trace);
 
@@ -182,11 +183,11 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
       break;
     }
     case SR_DF_END: {
-      g_printf("datastream from device ended\n");
+      g_debug("datastream from device ended");
       break;
     }
     default:
-      printf("unhandled payload type: %d\n", packet->type);
+      g_debug("unhandled payload type: %d", packet->type);
       break;
   }
 }
@@ -218,7 +219,6 @@ void data_feed_callback_efficient(const struct sr_dev_inst *sdi,
 
       for(size_t i = 0; i < payload->length; i++) {
         uint8_t curr = data[i];
-        /* printf("Got datafeed payload of length %" PRIu64 " Unit size is %" PRIu16 " byte\n", payload->length, payload->unitsize); */
         if(curr != last) {
           int16_t delta = (last - curr);
           /* for (size_t k = 0; k < process->channel_count; k++) { */

@@ -17,7 +17,7 @@
 #include <sys/mman.h>
 #include <inttypes.h>
 
-typedef size_t jobid;
+/* typedef size_t jobid; */
 
 typedef struct chunked_output {
   output_write_function write;
@@ -25,7 +25,7 @@ typedef struct chunked_output {
   gchar *data_path;
   GAsyncQueue *trace_queue;
   size_t chunk_cnt;
-  jobid id;
+  /* jobid id; */
 
   trace_t *traces_mmap;
   trace_t *curr_trace;
@@ -59,14 +59,14 @@ int acquire_next_chunk(chunked_output_t *output) {
     munmap(output->traces_mmap, output->traces_file_size);
   }
 
-  target_file = g_strdup_printf("%s/job-%zu-%zu", output->data_path, output->id, output->chunk_cnt);
+  target_file = g_strdup_printf("%s/traces-%zu", output->data_path, output->chunk_cnt);
 
   if ((fd = open(target_file, O_RDWR | O_CREAT, S_IRWXU)) < 0) {
     g_printf("could not acquire next chunk\n");
     return -1;
   }
 
-  output->traces_file_size = CHUNK_SIZE * sizeof(trace_t);
+  output->traces_file_size = CHUNK_SIZE * TRACE_SIZE;
   if ((ret = ftruncate(fd, output->traces_file_size)) < 0) {
     g_printf("Could not truncate file to required size of %d!\n", CHUNK_SIZE);
     return -1;
@@ -93,9 +93,8 @@ int acquire_next_chunk(chunked_output_t *output) {
 }
 
 static void chunked_output_write(chunked_output_t *output, trace_t *sample) {
-  /* g_fprintf(_fp, "%" PRIu64 ",%d,%d\n", sample.timestamp_ns, sample.channel, sample.state); */
-  memcpy(output->curr_trace, sample, sizeof(trace_t));
-  output->curr_trace++;
+  memcpy(output->curr_trace, sample, TRACE_SIZE);
+  output->curr_trace = (char*) output->curr_trace + TRACE_SIZE;
   output->traces_written++;
 
   if (G_UNLIKELY(output->traces_written > CHUNK_SIZE)) {
@@ -113,7 +112,7 @@ int chunked_output_init(chunked_output_t *output, const gchar* data_path) {
   g_printf("Initializing chunked output module!\n");
 
   output->chunk_cnt = 0;
-  output->id = 0; // for now just 1
+  /* output->id = 0; // for now just 1 */
 
   len = sizeof(gchar)*strlen(data_path) + 1;
   output->data_path = malloc(len);
