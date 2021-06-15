@@ -14,6 +14,12 @@ static guint8 _running = 0;
 static GAsyncQueue *_timestamp_ref_queue; // return queue for reference timestamps
 static GAsyncQueue *_timestamp_unref_queue; // process incoming gpio signals captured by the logic analyzer
 
+
+/* static struct precision_time __prec_time_from_secs(guint64 seconds, struct precision_time *prec_time) { */
+/*   prec_time->clk = seconds; */
+/*   prec_time->acc = 0; */
+/* } */
+
 static gpointer radio_thread_func(gpointer data) {
   static uint8_t no_signal_cnt = 0;
 
@@ -21,15 +27,14 @@ static gpointer radio_thread_func(gpointer data) {
   while(_running) {
     int ret;
     int bytes_avail;
-    timestamp_pair_t *reference_timestamp_pair = NULL; // add timestamp from preprocess to identify pair
-    ptime_t *local_timestamp_ps = NULL;
+    guint64 *ref_time = NULL; // add timestamp from preprocess to identify pair
 
-    local_timestamp_ps = g_async_queue_timeout_pop(_timestamp_unref_queue, 2e6);
+    ref_time = g_async_queue_timeout_pop(_timestamp_unref_queue, 2e6);
     /* local_timestamp_ps = g_async_queue_pop(_timestamp_unref_queue); */
     g_debug("pop unreferenced timestamp from queue");
 
     // Timeout -> check wether transceiver is in correct state
-    if(local_timestamp_ps == NULL) {
+    if(ref_time == NULL) {
       /* no_signal_cnt += 1; */
 
       /* if (!(no_signal_cnt % 100)) { */
@@ -84,11 +89,10 @@ static gpointer radio_thread_func(gpointer data) {
 
           g_message("Got reference seconds: %d", reference_timestamp_sec);
 
-          reference_timestamp_pair = malloc(sizeof(timestamp_pair_t));
-          reference_timestamp_pair->local_timestamp_ps = *local_timestamp_ps;
-          reference_timestamp_pair->reference_timestamp_ps = reference_timestamp_sec * TIME_UNIT;
+          /* __prec_time_from_secs(reference_timestamp_sec, ref_time); */
+          *ref_time = (guint64)reference_timestamp_sec;
 
-          g_async_queue_push(_timestamp_ref_queue, reference_timestamp_pair);
+          g_async_queue_push(_timestamp_ref_queue, ref_time);
         }
 
         g_debug("state before reset: %s", cc1101_get_chip_state_str());
@@ -116,7 +120,7 @@ int radio_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_qu
 
   unsigned char PKTCTRL1_old;
   PKTCTRL1_old = cc1101_read_config(PKTCTRL1);
-  cc1101_write_config(PKTCTRL1, PKTCTRL1_old | 0x08 | 0x80); // 0x08 -> auto CRC Flush, 0x40 -> PQT = 2*4 = 8
+  cc1101_write_config(PKTCTRL1, PKTCTRL1_old | 0x08 | 0x40); // 0x08 -> auto CRC Flush, 0x40 -> PQT = 2*4 = 8
   cc1101_read_config(PKTCTRL1);
 
   // enable frequency synthesizer auto-calibration upon entering rx or tx state from idle every third time

@@ -13,87 +13,150 @@
 #include <math.h>
 
 
-void init_clock(preprocess_instance_t* process, guint32 frequency) {
-  /* process->local_clock = malloc(sizeof(lclock_t)); */
+/* #define ACC_MASK (((guint64) 1 << 32) - 1); */
+
+/* static gint64 prec_time_off(struct precision_time *time1, struct precision_time *time2) { */
+/*   // TODO check underflow/overflow conditions */
+/*   g_message("prec_time_off %" G_GINT64_FORMAT, (time1->clk - time2->clk) << 32); */
+/*   return ((time1->clk - time2->clk) << 32) + (time1->acc - time2->acc); */
+/* } */
+
+guint64 accumulator;
+guint64 seconds;
+
+void init_clock(preprocess_instance_t* process, guint64 frequency) {
   process->local_clock.nom_freq = frequency;
-  process->local_clock.nom_period = TIME_UNIT/frequency;
-  process->local_clock.period = process->local_clock.nom_period;
+  process->local_clock.freq = 0;
   process->local_clock.state = WAIT;
-  process->local_clock.seq = 0;
-  process->local_clock.prev_seq = 0;
+  process->local_clock.free_seq = 0;
+  process->local_clock.closed_seq = 0;
+
+  process->local_clock.nom_frequency = ((guint64)1 << 60) / frequency;
+  process->local_clock.adjusted_frequency = process->local_clock.nom_frequency;
+  process->local_clock.res_error = 0;
+  process->local_clock.offset_adj = 0;
+  accumulator = 0;
+
+  g_message("nominal frequency: %" G_GUINT64_FORMAT, process->local_clock.nom_frequency);
+  g_message("adjusted frequency: %" G_GUINT64_FORMAT, process->local_clock.adjusted_frequency);
 }
 
 void tick(preprocess_instance_t *process) {
-  lclock_t *clk = &(process->local_clock);
+  static int seq_cnt = 0;
+  struct lclock *clk = &(process->local_clock);
 
   if (G_LIKELY(clk->state > WAIT)) {
-    if (G_LIKELY(clk->offset > clk->res_error)) {
-      clk->phase += clk->period + clk->res_error;
-      clk->offset -= clk->res_error;
+    // closed-loop
+    /* if((clk->state == FREQ) && seq_cnt++>=clk->freq) { */
+    /*   seq_cnt = 0; */
+    /*   if(clk->freq > 0) clk->closed_seq--; */
+    /*   if(clk->freq < 0) clk->closed_seq++; */
+    /*   clk->res_error--; */
+
+    /*   if (clk->res_error <= 0) { */
+    /*     clk->freq = clk->nom_freq/clk->freq_offset; */
+    /*   } */
+    /* } */
+
+    /* clk->closed_seq++; */
+
+    accumulator += clk->adjusted_frequency - clk->offset_adj;
+    clk->res_error += clk->offset_adj * (clk->offset_adj < 0 ? 1 : -1);
+    /* accumulator += clk->adjusted_frequency; */
+    /* clk->res_error += clk->offset_adj * (clk->offset_adj < 0 ? 1 : -1);     */
+    if(clk->res_error <= 0) {
+      clk->offset_adj = 0;
     }
-    else {
-      clk->phase += clk->period + clk->offset;
-      clk->offset = 0;
+
+    if(accumulator > ((guint64)1 << 60)) {
+      seconds++;
+      accumulator -= ((guint64)1 << 60);
     }
-    clk->seq++;
+
+    // open-loop
+    clk->free_seq++;
   }
 }
 
 // time reference signal handling
 static void handle_time_ref_signal(preprocess_instance_t *process) {
-  ptime_t *signal_cnt = malloc(sizeof(ptime_t)); // TODO
-  *signal_cnt = 1;
-  ptime_t *timestamp_local = NULL;
-  timestamp_pair_t *reference_timestamp_pair = NULL;
+  struct lclock *clk = &(process->local_clock);
+  guint64 *ref_time = malloc(sizeof (guint64));
 
-  lclock_t *clk = &(process->local_clock);
   g_debug("pushing new unreferenced timestamp to queue");
-  g_async_queue_push(process->timestamp_unref_queue, signal_cnt);
+  g_async_queue_push(process->timestamp_unref_queue, ref_time);
 
   // read data from process
   g_debug("reading referenced timestamp from queue");
-  reference_timestamp_pair = g_async_queue_pop(process->timestamp_ref_queue);
-  if (reference_timestamp_pair != NULL) { // happens only in case g_async_queue_pop with timeout is used
+  ref_time = g_async_queue_pop(process->timestamp_ref_queue);
+
+  if (ref_time != NULL) { // happens only in case g_async_queue_pop with timeout is used
     switch (clk->state) {
     case WAIT: {
+      /* clk->state = OFFSET; */
+      /* clk->prev_time = *ref_time; */
+      /* clk->closed_seq = (*ref_time)*clk->nom_freq; */
       clk->state = OFFSET;
-      clk->phase = reference_timestamp_pair->reference_timestamp_ps;
-      clk->prev_ref_phase = clk->phase;
+      clk->prev_time = *ref_time;
+      seconds = (*ref_time);
       break;
     }
     case OFFSET: {
       clk->state = FREQ;
-      clk->freq = clk->nom_freq * (double)clk->phase/reference_timestamp_pair->reference_timestamp_ps;
-      clk->period = TIME_UNIT/clk->freq;
-      clk->prev_ref_phase = reference_timestamp_pair->reference_timestamp_ps;
-      clk->phase = reference_timestamp_pair->reference_timestamp_ps;
-      clk->prev_seq = clk->seq;
-      g_message("period %f\n", clk->period);
-      break;
     }
     case FREQ: {
-      ptime_t offset;
-      ptime_t local_phase;
-      ptime_t ref_phase;
+      guint64 time_since_last;
 
-      ref_phase = reference_timestamp_pair->reference_timestamp_ps;
-      local_phase =  clk->phase;
-      offset = ref_phase - local_phase;
+      time_since_last = *ref_time - clk->prev_time;
 
-      // update elements
-      clk->offset = offset;
-      clk->res_error = offset < -TIME_UNIT ? -TIME_UNIT : offset > TIME_UNIT ? TIME_UNIT : offset; // per second the PLL can remove 100microseconds
-      clk->res_error = clk->res_error/clk->nom_freq;
+      /* clk->freq_offset = (double)clk->free_seq/time_since_last - clk->nom_freq;
+      /* clk->offset =  clk->closed_seq - (gint64)(*ref_time)*clk->nom_freq; */
+      /* clk->res_error = abs(clk->offset); */
 
-      clk->freq = clk->nom_freq * (double)((clk->seq * clk->nom_period) - (clk->prev_seq * clk->nom_period))/(ref_phase - clk->prev_ref_phase);
-      clk->period = TIME_UNIT/clk->freq;
-      /* clk->period -= I; */
-      clk->prev_ref_phase = ref_phase;
-      clk->prev_seq = clk->seq;
+      /* // currently describes the interval of cycles after which a jump has to be made  therefore the naming might be misleading */
+      /* clk->freq = (double)clk->nom_freq/(clk->freq_offset + clk->offset); */
+      /* clk->prev_time = *ref_time; */
+      /* clk->free_seq = 0; */
 
-      g_debug("offset %" G_GINT64_FORMAT "fs", offset);
-      g_message("offset %" G_GINT64_FORMAT "ns", offset/((int)1e6));
-      /* printf("offset %" PRId64 "ns, period %" PRId64 "\n", (int64_t) offset/((guint64)(TIME_UNIT-1e9)), clk->period); */
+      /* clk->state = FREQ; */
+
+      /* g_message("offset %" G_GINT64_FORMAT, clk->offset); */
+      /* /\* g_message("freq offset %" G_GUINT64_FORMAT, clk->freq_offset);      /\\* g_debug("offset %" G_GINT64_FORMAT "fs", offset); *\\/ *\/ */
+      /* g_message("freq offset %f", clk->freq_offset); */
+      /* g_message("freq %f", clk->freq); */
+
+
+      /* other variant*/
+      // assumption clock is never off more than one second
+      if (seconds == *ref_time-1) {
+        clk->offset = (((gint64)1 << 60) - accumulator);
+        clk->res_error = clk->offset;
+        clk->offset *= -1;
+      } else if (seconds == *ref_time) {
+        clk->offset = accumulator;
+        clk->res_error = clk->offset;
+      } else { // offset too large
+        // implement me
+        g_message("Offset too large this should not happen!");
+        g_message("local seconds %" G_GUINT64_FORMAT, seconds);
+        g_message("reference seconds %" G_GUINT64_FORMAT, *ref_time);
+      }
+      if(clk->state == OFFSET) {
+        clk->adjusted_frequency = clk->nom_frequency*(((double)time_since_last*clk->nom_freq)/clk->free_seq);
+      } else {
+        clk->adjusted_frequency = 0.3*clk->adjusted_frequency +  0.7 * clk->nom_frequency*(((double)time_since_last*clk->nom_freq)/clk->free_seq);
+      }
+
+      clk->offset_adj = clk->offset / (clk->nom_freq);
+      clk->free_seq = 0;
+      clk->prev_time = *ref_time;
+
+      g_message("offset %" G_GINT64_FORMAT, clk->offset);
+      g_message("offset_adj %" G_GINT64_FORMAT, clk->offset_adj);
+      g_message("accumulator %" G_GUINT64_FORMAT, accumulator);
+      g_message("adjusted frequency %" G_GUINT64_FORMAT, clk->adjusted_frequency);
+      g_message("res_error %" G_GINT64_FORMAT, clk->res_error);
+
       break;
     }
 default:
@@ -102,22 +165,20 @@ default:
   } else {
     g_debug("Discarded reference signal. Transceiver took to long to answer! \n");
   }
-  free(signal_cnt);
+  free(ref_time);
 }
 
 // GPIO signal handling
 static inline void handle_gpio_signal(preprocess_instance_t *process, uint8_t state, uint8_t channel) {
-  /* trace_t *trace = malloc(sizeof(trace_t)); */
-  trace_t trace;
+  /* struct trace *trace = malloc(sizeof(struct trace)); */
+  struct trace trace;
   trace.channel = channel;
   trace.state = state;
-  trace.timestamp_ns = process->local_clock.phase;
+  trace.timestamp_ns = (1e9 * seconds + 1e9 * (double)accumulator/((guint64)1 << 60));
 
   g_debug("writing trace to file");
   // print trace using output module write function
   (*process->output->write)(process->output, &trace);
-
-  /* g_printf("Writing trace\n!"); */
 }
 
 void data_feed_callback(const struct sr_dev_inst *sdi,
@@ -126,7 +187,6 @@ void data_feed_callback(const struct sr_dev_inst *sdi,
   static gboolean initial_df_logic_packet = TRUE;
   static uint8_t last;
   preprocess_instance_t *process = (preprocess_instance_t*) cb_data;
-  /* static ptime_t first_sync_timestamp; */
 
   switch (packet->type) {
     case SR_DF_HEADER: {
@@ -198,7 +258,7 @@ void data_feed_callback_efficient(const struct sr_dev_inst *sdi,
   static gboolean initial_df_logic_packet = TRUE;
   static uint8_t last;
   preprocess_instance_t *process = (preprocess_instance_t*) cb_data;
-  /* static ptime_t first_sync_timestamp; */
+  /* static guint64 first_sync_timestamp; */
 
   switch (packet->type) {
     case SR_DF_HEADER: {
@@ -220,26 +280,29 @@ void data_feed_callback_efficient(const struct sr_dev_inst *sdi,
       for(size_t i = 0; i < payload->length; i++) {
         uint8_t curr = data[i];
         if(curr != last) {
-          int16_t delta = (last - curr);
-          /* for (size_t k = 0; k < process->channel_count; k++) { */
-          /* uint8_t k_channel_mask = (1<<process->channels[k].channel); */
           uint8_t state;
-          if(delta) {
-            if(G_UNLIKELY(((last&(1<<RECEIVER_CHANNEL)) - (curr&(1<<RECEIVER_CHANNEL))) < 0)) {
-              handle_time_ref_signal(process);
-            } else {
-              // determine wether signal was falling or rising
-              /* if((process->channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal */
-              /*   state = 0; */
-              /* } else if (process->channels[k].mode & MATCH_RISING) {  // rising signal */
-              /*   state = 1; */
-              /* } */
+          uint8_t changed = last^curr;
 
-              handle_gpio_signal(process, state, process->channels[2].channel);
+          if(changed) {
+            for (size_t k = 0; k < process->channel_count ; k++) {
+              uint8_t channel = process->channels[k].channel;
+              uint8_t mode = process->channels[k].mode;
+
+              if(changed & 1 << channel) {
+                if(G_UNLIKELY(channel==RECEIVER_CHANNEL) && (curr & 1 << channel)) { // only match rising flank
+                  handle_time_ref_signal(process);
+                } else {
+                  if((mode & MATCH_FALLING) && (last & 1 << channel)) { // falling signal
+                    state = 0;
+                  } else if (process->channels[k].mode & MATCH_RISING) {  // rising signal
+                    state = 1;
+                  }
+
+                  handle_gpio_signal(process, state, process->channels[k].channel);
+                }
+              }
             }
-            /* } */
           }
-          /* last = curr; */
         }
         last = curr;
         tick(process);

@@ -25,25 +25,29 @@ struct channel_mode {
   gint8 mode;
 };
 
-typedef struct lclock {
-  guint32 nom_freq; // nominal frequency
-  ptime_t nom_period; // nominal period
-
-  ptime_t phase; // current phase of clock
-  ptime_t period;
-
+struct lclock {
   clock_state_t state;
 
-  // used for open loop measurements to determine frequency dev.
-  ptime_t prev_ref_phase;
-  ptime_t prev_seq;
-  guint64 seq;
+  gint64 nom_freq; // nominal frequency
+  /* struct precision_time curr_t; */
+  guint64 freq;
 
-  ptime_t freq; // current running frequency
-  ptime_t offset; // last offset from reference clock
-  ptime_t res_error; //residue error
+  guint64 nom_frequency;
+  guint64 adjusted_frequency;
 
-} lclock_t;
+  /* struct precision_time prev_ref; */
+  guint64 closed_seq;
+  guint64 prev_time;
+
+  guint64 free_seq;
+
+  gint64 res_error;
+  gint64 offset_adj;
+  gint64 offset; // last offset from reference clock
+
+  /* guint64 freq_offset; */
+  gint64 freq_offset;
+};
 
 typedef struct preprocess_instance {
   process_state_t state;
@@ -61,7 +65,7 @@ typedef struct preprocess_instance {
 
   output_module_t *output;
 
-  lclock_t local_clock;
+  struct lclock local_clock;
 } preprocess_instance_t;
 
 /* --- proto --- */
