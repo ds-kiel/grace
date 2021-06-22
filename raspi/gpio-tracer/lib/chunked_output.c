@@ -40,8 +40,24 @@ chunked_output_t* chunked_output_new() {
 
 
 int chunked_output_deinit(chunked_output_t *output) {
+  gchar *last_file;
+  gint ret, fd;
+
+  last_file =  g_strdup_printf("%s/traces-%zu", output->data_path, output->chunk_cnt-1);
+
   free(output->data_path);
   munmap(output->traces_mmap, output->traces_file_size);
+
+  // truncate last file
+  if ((fd = open(last_file, O_RDWR | O_CREAT, S_IRWXU)) < 0) {
+    g_printf("could not acquire next chunk\n");
+    return -1;
+  }
+
+  if ((ret = ftruncate(fd, output->traces_written*TRACE_SIZE)) < 0) {
+    g_printf("Could not truncate file to required size of %d!\n", CHUNK_SIZE);
+    return -1;
+  }
 
   free(output);
   return 0;
@@ -49,9 +65,7 @@ int chunked_output_deinit(chunked_output_t *output) {
 
 // returns -1 on failure
 int acquire_next_chunk(chunked_output_t *output) {
-  gint ret;
-  GError *err = NULL;
-  gint fd;
+  gint ret, fd;
   gchar *target_file;
 
   // free current chunk if its existing
@@ -80,9 +94,8 @@ int acquire_next_chunk(chunked_output_t *output) {
 
   g_printf("Got memory mapped region at address %p\n", output->traces_mmap);
 
-  err = NULL;
-  if (!g_close(fd, &err)) {
-    g_printf("Could not close chunk\n");
+  if (close(fd)) {
+    g_printf("Could not close file\n");
     return -1;
   }
 
@@ -90,6 +103,8 @@ int acquire_next_chunk(chunked_output_t *output) {
   output->traces_written = 0;
 
   output->chunk_cnt++;
+
+  return 0;
 }
 
 static void chunked_output_write(chunked_output_t *output, struct trace *sample) {

@@ -12,15 +12,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-
-/* #define ACC_MASK (((guint64) 1 << 32) - 1); */
-
-/* static gint64 prec_time_off(struct precision_time *time1, struct precision_time *time2) { */
-/*   // TODO check underflow/overflow conditions */
-/*   g_message("prec_time_off %" G_GINT64_FORMAT, (time1->clk - time2->clk) << 32); */
-/*   return ((time1->clk - time2->clk) << 32) + (time1->acc - time2->acc); */
-/* } */
-
 guint64 accumulator;
 guint64 seconds;
 
@@ -181,77 +172,6 @@ static inline void handle_gpio_signal(preprocess_instance_t *process, uint8_t st
   (*process->output->write)(process->output, &trace);
 }
 
-void data_feed_callback(const struct sr_dev_inst *sdi,
-                                            const struct sr_datafeed_packet *packet,
-                                            void *cb_data) {
-  static gboolean initial_df_logic_packet = TRUE;
-  static uint8_t last;
-  preprocess_instance_t *process = (preprocess_instance_t*) cb_data;
-
-  switch (packet->type) {
-    case SR_DF_HEADER: {
-      struct sr_datafeed_header *payload = (struct sr_datafeed_header*) packet->payload;
-      printf("got datafeed header: feed version %d, startime %lu\n", payload->feed_version, payload->starttime.tv_usec);
-      initial_df_logic_packet = TRUE;
-
-      break;
-    }
-    case SR_DF_LOGIC: {
-      struct sr_datafeed_logic *payload = (struct sr_datafeed_logic*) packet->payload;
-      uint8_t* data = payload->data;
-
-      if(initial_df_logic_packet) {
-        last = data[0] & process->active_channel_mask;
-        initial_df_logic_packet = FALSE;
-      }
-
-      for(size_t i = 0; i < payload->length; i++) {
-        /* printf("Got datafeed payload of length %" PRIu64 " Unit size is %" PRIu16 " byte\n", payload->length, payload->unitsize); */
-        if((data[i] & process->active_channel_mask) != last) {
-          for (size_t k = 0; k < process->channel_count ; k++) {
-            uint8_t k_channel_mask = (1<<process->channels[k].channel);
-            int8_t delta;
-            if (G_LIKELY(i > 0)) {
-              delta = ((data[i-1]&k_channel_mask)>>process->channels[k].channel) - ((data[i]&k_channel_mask)>>process->channels[k].channel);
-            } else {
-              delta = ((last&k_channel_mask)>>process->channels[k].channel) - ((data[i]&k_channel_mask)>>process->channels[k].channel);
-            }
-
-            uint8_t state;
-            if(delta) {
-              if(process->channels[k].channel == RECEIVER_CHANNEL) {
-                if(delta < 0) { // Rising signal -> save timestamp
-                  handle_time_ref_signal(process);
-                }
-              } else {
-                // determine wether signal was falling or rising
-                if((process->channels[k].mode & MATCH_FALLING) && delta > 0) { // falling signal
-                  state = 0;
-                } else if (process->channels[k].mode & MATCH_RISING) {  // rising signal
-                  state = 1;
-                }
-
-                handle_gpio_signal(process, state, process->channels[k].channel);
-              }
-            }
-          }
-        }
-        tick(process);
-      }
-      last = data[payload->length-1] & process->active_channel_mask;
-
-      break;
-    }
-    case SR_DF_END: {
-      g_debug("datastream from device ended");
-      break;
-    }
-    default:
-      g_debug("unhandled payload type: %d", packet->type);
-      break;
-  }
-}
-
 void data_feed_callback_efficient(const struct sr_dev_inst *sdi,
                                             const struct sr_datafeed_packet *packet,
                                             void *cb_data) {
@@ -294,11 +214,11 @@ void data_feed_callback_efficient(const struct sr_dev_inst *sdi,
                 } else {
                   if((mode & MATCH_FALLING) && (last & 1 << channel)) { // falling signal
                     state = 0;
-                  } else if (process->channels[k].mode & MATCH_RISING) {  // rising signal
+                  } else if (mode & MATCH_RISING) {  // rising signal
                     state = 1;
                   }
 
-                  handle_gpio_signal(process, state, process->channels[k].channel);
+                  handle_gpio_signal(process, state, channel);
                 }
               }
             }

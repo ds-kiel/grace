@@ -1,7 +1,7 @@
 #ifndef CHUNKED_OUTPUT_H
 #define CHUNKED_OUTPUT_H
 
-#define CHUNK_SIZE 10000000 //in Byte
+#define CHUNK_SIZE 10000 // Number of traces per file
 
 typedef struct chunked_output chunked_output_t;
 
