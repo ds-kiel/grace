@@ -108,7 +108,7 @@ int acquire_next_chunk(chunked_output_t *output) {
 }
 
 static void chunked_output_write(chunked_output_t *output, struct trace *sample) {
-  g_message("writing sample with timestamp %" G_GINT64_FORMAT, sample->timestamp_ns);
+  g_message("writing state %d from channel %d with timestamp %" G_GINT64_FORMAT, sample->state, sample->channel, sample->timestamp_ns);
   /* memcpy(output->curr_trace, sample, TRACE_SIZE); */
 
   memcpy(output->curr_trace, &sample->channel, sizeof(sample->channel));

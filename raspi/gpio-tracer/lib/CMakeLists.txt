@@ -8,7 +8,7 @@ find_package(Threads REQUIRED)
 set(CMAKE_INSTALL_RPATH "$ORIGIN")
 
 add_library(analyzer
-  preprocess.c chunked_output.c radio.c
+  tracing.c chunked_output.c radio.c
   "${PROJECT_SOURCE_DIR}/external/cc1101-spidev/cc1101.c")
 
 target_include_directories(analyzer

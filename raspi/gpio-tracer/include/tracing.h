@@ -1,5 +1,5 @@
-#ifndef PREPROCESS_H
-#define PREPROCESS_H
+#ifndef TRACING_H
+#define TRACING_H
 
 #include <glib.h>
 #include <libsigrok/libsigrok.h>
@@ -49,7 +49,7 @@ struct lclock {
   gint64 freq_offset;
 };
 
-typedef struct preprocess_instance {
+typedef struct tracing_instance {
   process_state_t state;
   struct sr_context *sr_cntxt;
   struct sr_session *sr_session;
@@ -66,16 +66,16 @@ typedef struct preprocess_instance {
   output_module_t *output;
 
   struct lclock local_clock;
-} preprocess_instance_t;
+} tracing_instance_t;
 
 /* --- proto --- */
-int preprocess_init(preprocess_instance_t *process, output_module_t *output, GVariant *channel_modes, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue);
-int preprocess_stop_instance(preprocess_instance_t *process);
+int tracing_init(tracing_instance_t *process, output_module_t *output, GVariant *channel_modes, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue);
+int tracing_stop_instance(tracing_instance_t *process);
 
 // TODO rename to something more meaninfull
-gboolean preprocess_running(preprocess_instance_t* process);
+gboolean tracing_running(tracing_instance_t* process);
 
-static int preprocess_init_sigrok(preprocess_instance_t *process, guint32 samplerate);
-static int preprocess_kill_instance(preprocess_instance_t *process);
+static int tracing_init_sigrok(tracing_instance_t *process, guint32 samplerate);
+static int tracing_kill_instance(tracing_instance_t *process);
 
-#endif /* PREPROCESS_H */
+#endif /* TRACING_H */

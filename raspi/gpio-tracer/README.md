@@ -3,12 +3,16 @@ See [stackoverflow](https://serverfault.com/questions/892465/starting-systemd-se
 
 # Dependencies
 ### Installation on Raspbian
+
+#### Install dependencies for gpio-tracer
 ```
   apt update
-  apt install libsigrok-dev libglib2.0-dev python3 sigrok-firmware-fx2lafw
+  apt install libsigrok-dev libglib2.0-dev python3 sigrok-firmware-fx2lafw cmake
   apt install default-dbus-session-bus # Needed for running dbus-user sessions. Only needed for development
+  reboot
 ```
-
+#### Enable spidev
+Either use raspi-config and enable SPI or add `dtparam=spi=on` to `/boot/config.txt`
 
 ```
   pip3 install flask-restful dbus-python requests

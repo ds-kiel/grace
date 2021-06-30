@@ -1,4 +1,4 @@
-#include <preprocess.h>
+#include <tracing.h>
 
 #include <types.h>
 #include <output_module.h>
@@ -12,17 +12,20 @@
 #include <stdlib.h>
 #include <math.h>
 
+#define TICKS_PER_SECOND ((guint64) 1 << 60)
+#define TICKS_PER_NANOSECOND (((guint64) 1 << 60)/1000000000)
+
 guint64 accumulator;
 guint64 seconds;
 
-void init_clock(preprocess_instance_t* process, guint64 frequency) {
+void init_clock(tracing_instance_t* process, guint64 frequency) {
   process->local_clock.nom_freq = frequency;
   process->local_clock.freq = 0;
   process->local_clock.state = WAIT;
   process->local_clock.free_seq = 0;
   process->local_clock.closed_seq = 0;
 
-  process->local_clock.nom_frequency = ((guint64)1 << 60) / frequency;
+  process->local_clock.nom_frequency = TICKS_PER_SECOND / frequency;
   process->local_clock.adjusted_frequency = process->local_clock.nom_frequency;
   process->local_clock.res_error = 0;
   process->local_clock.offset_adj = 0;
@@ -32,25 +35,11 @@ void init_clock(preprocess_instance_t* process, guint64 frequency) {
   g_message("adjusted frequency: %" G_GUINT64_FORMAT, process->local_clock.adjusted_frequency);
 }
 
-void tick(preprocess_instance_t *process) {
+void tick(tracing_instance_t *process) {
   static int seq_cnt = 0;
   struct lclock *clk = &(process->local_clock);
 
-  if (G_LIKELY(clk->state > WAIT)) {
-    // closed-loop
-    /* if((clk->state == FREQ) && seq_cnt++>=clk->freq) { */
-    /*   seq_cnt = 0; */
-    /*   if(clk->freq > 0) clk->closed_seq--; */
-    /*   if(clk->freq < 0) clk->closed_seq++; */
-    /*   clk->res_error--; */
-
-    /*   if (clk->res_error <= 0) { */
-    /*     clk->freq = clk->nom_freq/clk->freq_offset; */
-    /*   } */
-    /* } */
-
-    /* clk->closed_seq++; */
-
+  if ((clk->state > WAIT)) {
     accumulator += clk->adjusted_frequency - clk->offset_adj;
     clk->res_error += clk->offset_adj * (clk->offset_adj < 0 ? 1 : -1);
     /* accumulator += clk->adjusted_frequency; */
@@ -59,9 +48,9 @@ void tick(preprocess_instance_t *process) {
       clk->offset_adj = 0;
     }
 
-    if(accumulator > ((guint64)1 << 60)) {
+    if(accumulator > TICKS_PER_SECOND) {
       seconds++;
-      accumulator -= ((guint64)1 << 60);
+      accumulator -= TICKS_PER_SECOND;
     }
 
     // open-loop
@@ -70,7 +59,7 @@ void tick(preprocess_instance_t *process) {
 }
 
 // time reference signal handling
-static void handle_time_ref_signal(preprocess_instance_t *process) {
+static void handle_time_ref_signal(tracing_instance_t *process) {
   struct lclock *clk = &(process->local_clock);
   guint64 *ref_time = malloc(sizeof (guint64));
 
@@ -120,7 +109,7 @@ static void handle_time_ref_signal(preprocess_instance_t *process) {
       /* other variant*/
       // assumption clock is never off more than one second
       if (seconds == *ref_time-1) {
-        clk->offset = (((gint64)1 << 60) - accumulator);
+        clk->offset = (TICKS_PER_SECOND - accumulator);
         clk->res_error = clk->offset;
         clk->offset *= -1;
       } else if (seconds == *ref_time) {
@@ -160,12 +149,13 @@ default:
 }
 
 // GPIO signal handling
-static inline void handle_gpio_signal(preprocess_instance_t *process, uint8_t state, uint8_t channel) {
+static inline void handle_gpio_signal(tracing_instance_t *process, uint8_t state, uint8_t channel) {
   /* struct trace *trace = malloc(sizeof(struct trace)); */
   struct trace trace;
   trace.channel = channel;
   trace.state = state;
-  trace.timestamp_ns = (1e9 * seconds + 1e9 * (double)accumulator/((guint64)1 << 60));
+  /* trace.timestamp_ns = (1000000000 * seconds + 1e9 * (double)accumulator/TICKS_PER_SECOND); */
+  trace.timestamp_ns = (1000000000 * seconds + (accumulator/TICKS_PER_NANOSECOND));
 
   g_debug("writing trace to file");
   // print trace using output module write function
@@ -177,7 +167,7 @@ void data_feed_callback_efficient(const struct sr_dev_inst *sdi,
                                             void *cb_data) {
   static gboolean initial_df_logic_packet = TRUE;
   static uint8_t last;
-  preprocess_instance_t *process = (preprocess_instance_t*) cb_data;
+  tracing_instance_t *process = (tracing_instance_t*) cb_data;
   /* static guint64 first_sync_timestamp; */
 
   switch (packet->type) {
@@ -218,8 +208,8 @@ void data_feed_callback_efficient(const struct sr_dev_inst *sdi,
                     state = 1;
                   }
 
-                  handle_gpio_signal(process, state, channel);
                 }
+                handle_gpio_signal(process, state, channel);
               }
             }
           }
@@ -240,7 +230,7 @@ void data_feed_callback_efficient(const struct sr_dev_inst *sdi,
 
 }
 
-int preprocess_stop_instance(preprocess_instance_t *process) {
+int tracing_stop_instance(tracing_instance_t *process) {
   int ret;
 
   // uninitialize sigrok
@@ -253,7 +243,7 @@ int preprocess_stop_instance(preprocess_instance_t *process) {
   return 0;
 }
 
-static int preprocess_kill_instance(preprocess_instance_t *process) {
+static int tracing_kill_instance(tracing_instance_t *process) {
   int ret;
 
   if(process->state==RUNNING || process->sr_session == NULL) {
@@ -283,16 +273,16 @@ static int preprocess_kill_instance(preprocess_instance_t *process) {
 
 
 void session_stopped_callback(void* data) {
-  preprocess_instance_t* process= (preprocess_instance_t*) data;
+  tracing_instance_t* process= (tracing_instance_t*) data;
   g_printf("Session has stoppped!\n");
   process->state = STOPPED;
-  preprocess_kill_instance(process);
+  tracing_kill_instance(process);
 }
 
 
-// ownership of channel_modes is transfered to preprocess_init_sigrok(), so the GVariant should not be unreffed by the callee!
+// ownership of channel_modes is transfered to tracing_init_sigrok(), so the GVariant should not be unreffed by the callee!
 // returns -1 on failure. returns 1 if session already exists
-static int preprocess_init_sigrok(preprocess_instance_t *process, guint32 samplerate)
+static int tracing_init_sigrok(tracing_instance_t *process, guint32 samplerate)
 {
   int ret;
 
@@ -423,14 +413,14 @@ static int preprocess_init_sigrok(preprocess_instance_t *process, guint32 sample
   return 0;
 }
 
-gboolean preprocess_running(preprocess_instance_t* process) {
+gboolean tracing_running(tracing_instance_t* process) {
   if (process == NULL)
     return 0;
 
   return process->state == RUNNING;
 }
 
-int preprocess_init(preprocess_instance_t *process, output_module_t *output, GVariant *channel_modes, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
+int tracing_init(tracing_instance_t *process, output_module_t *output, GVariant *channel_modes, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
   int ret;
 
   if(process->state == RUNNING) {
@@ -438,7 +428,7 @@ int preprocess_init(preprocess_instance_t *process, output_module_t *output, GVa
     return 1;
   }
 
-  if (preprocess_init_sigrok(process, ANALYZER_FREQUENCY) < 0) {
+  if (tracing_init_sigrok(process, ANALYZER_FREQUENCY) < 0) {
     g_printf("Could not initialize sigrok instance!\n");
     return -1;
   };

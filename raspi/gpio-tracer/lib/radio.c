@@ -27,7 +27,7 @@ static gpointer radio_thread_func(gpointer data) {
   while(_running) {
     int ret;
     int bytes_avail;
-    guint64 *ref_time = NULL; // add timestamp from preprocess to identify pair
+    guint64 *ref_time = NULL; // add timestamp from tracing to identify pair
 
     ref_time = g_async_queue_timeout_pop(_timestamp_unref_queue, 2e6);
     /* local_timestamp_ps = g_async_queue_pop(_timestamp_unref_queue); */

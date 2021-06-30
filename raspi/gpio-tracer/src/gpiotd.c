@@ -2,7 +2,7 @@
 
 #include "gpiot.h"
 
-#include <preprocess.h>
+#include <tracing.h>
 #include <chunked_output.h>
 #include <types.h>
 #include <inttypes.h>
@@ -24,7 +24,7 @@ static GDBusNodeInfo* introspection_data = NULL;
 static GAsyncQueue *_trace_queue; // store queues so we can later safely unref them
 static GAsyncQueue *_timestamp_unref_queue;
 static GAsyncQueue *_timestamp_ref_queue;
-static preprocess_instance_t *preprocess_task;
+static tracing_instance_t *tracing_task;
 static chunked_output_t *chunked_output;
 
 static gchar *trace_path;
@@ -70,11 +70,11 @@ static int start_tasks(GVariant* channel_modes) {
 
   // TODO add error handling
   /* "/usr/testbed/sample_data/" */
-  preprocess_task = malloc(sizeof(preprocess_instance_t));
+  tracing_task = malloc(sizeof(tracing_instance_t));
   chunked_output = chunked_output_new();
   radio_init(_timestamp_unref_queue, _timestamp_ref_queue);
   chunked_output_init(chunked_output, trace_path);
-  preprocess_init(preprocess_task, (output_module_t*) chunked_output, channel_modes, _timestamp_unref_queue, _timestamp_ref_queue);
+  tracing_init(tracing_task, (output_module_t*) chunked_output, channel_modes, _timestamp_unref_queue, _timestamp_ref_queue);
 
   // start thread
   radio_start_reception();
@@ -84,7 +84,7 @@ static int start_tasks(GVariant* channel_modes) {
 
 static int stop_tasks() {
   radio_deinit();
-  preprocess_stop_instance(preprocess_task);
+  tracing_stop_instance(tracing_task);
   chunked_output_deinit(chunked_output);
 
   g_async_queue_unref(_trace_queue          );
@@ -141,7 +141,7 @@ static void handle_method_call(GDBusConnection *connnection,
   } else if (!g_strcmp0(method_name, "Stop")) {
     g_printf("Invocation: Stop\n");
 
-    if (preprocess_running(preprocess_task)) {
+    if (tracing_running(tracing_task)) {
       int ret;
       if ((ret = stop_tasks()) >= 0) {
         result = g_strdup_printf("stopped running instance");
@@ -154,7 +154,7 @@ static void handle_method_call(GDBusConnection *connnection,
     g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", result));
   } else if (!g_strcmp0(method_name, "getState")) {
     gpiot_daemon_state_t state;
-    if(preprocess_running(preprocess_task))
+    if(tracing_running(tracing_task))
       state = GPIOTD_COLLECTING;
     else state = GPIOTD_IDLE;
 
