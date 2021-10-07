@@ -70,43 +70,32 @@ static void handle_time_ref_signal(tracing_instance_t *process) {
   g_debug("reading referenced timestamp from queue");
   ref_time = g_async_queue_pop(process->timestamp_ref_queue);
 
-  if (ref_time != NULL) { // happens only in case g_async_queue_pop with timeout is used
+  if (ref_time > 0) { // 0 -> invalid time ref
+    guint64 time_since_last;
+
     switch (clk->state) {
     case WAIT: {
-      /* clk->state = OFFSET; */
-      /* clk->prev_time = *ref_time; */
-      /* clk->closed_seq = (*ref_time)*clk->nom_freq; */
-      clk->state = OFFSET;
       clk->prev_time = *ref_time;
       seconds = (*ref_time);
+
+      clk->state = OFFSET;
       break;
     }
     case OFFSET: {
-      clk->state = FREQ;
-    }
-    case FREQ: {
-      guint64 time_since_last;
-
       time_since_last = *ref_time - clk->prev_time;
+      clk->adjusted_frequency = clk->nom_frequency*(((double)time_since_last*clk->nom_freq)/clk->free_seq);
 
-      /* clk->freq_offset = (double)clk->free_seq/time_since_last - clk->nom_freq;
-      /* clk->offset =  clk->closed_seq - (gint64)(*ref_time)*clk->nom_freq; */
-      /* clk->res_error = abs(clk->offset); */
-
-      /* // currently describes the interval of cycles after which a jump has to be made  therefore the naming might be misleading */
-      /* clk->freq = (double)clk->nom_freq/(clk->freq_offset + clk->offset); */
-      /* clk->prev_time = *ref_time; */
-      /* clk->free_seq = 0; */
-
-      /* clk->state = FREQ; */
-
-      /* g_message("offset %" G_GINT64_FORMAT, clk->offset); */
-      /* /\* g_message("freq offset %" G_GUINT64_FORMAT, clk->freq_offset);      /\\* g_debug("offset %" G_GINT64_FORMAT "fs", offset); *\\/ *\/ */
-      /* g_message("freq offset %f", clk->freq_offset); */
-      /* g_message("freq %f", clk->freq); */
-
+      clk->state = FREQ;
+      goto phase_error;
+      break;
+    }
+    case FREQ: { // Main case. reached after two reference signals are received.
+      frequency_error:
+      time_since_last = *ref_time - clk->prev_time;
+      clk->adjusted_frequency = 0.3*clk->adjusted_frequency +  0.7 * clk->nom_frequency*(((double)time_since_last*clk->nom_freq)/clk->free_seq);
 
       /* other variant*/
+      phase_error:
       // assumption clock is never off more than one second
       if (seconds == *ref_time-1) {
         clk->offset = (TICKS_PER_SECOND - accumulator);
@@ -120,11 +109,6 @@ static void handle_time_ref_signal(tracing_instance_t *process) {
         g_message("Offset too large this should not happen!");
         g_message("local seconds %" G_GUINT64_FORMAT, seconds);
         g_message("reference seconds %" G_GUINT64_FORMAT, *ref_time);
-      }
-      if(clk->state == OFFSET) {
-        clk->adjusted_frequency = clk->nom_frequency*(((double)time_since_last*clk->nom_freq)/clk->free_seq);
-      } else {
-        clk->adjusted_frequency = 0.3*clk->adjusted_frequency +  0.7 * clk->nom_frequency*(((double)time_since_last*clk->nom_freq)/clk->free_seq);
       }
 
       clk->offset_adj = clk->offset / (clk->nom_freq);
@@ -151,15 +135,17 @@ default:
 // GPIO signal handling
 static inline void handle_gpio_signal(tracing_instance_t *process, uint8_t state, uint8_t channel) {
   /* struct trace *trace = malloc(sizeof(struct trace)); */
-  struct trace trace;
-  trace.channel = channel;
-  trace.state = state;
-  /* trace.timestamp_ns = (1000000000 * seconds + 1e9 * (double)accumulator/TICKS_PER_SECOND); */
-  trace.timestamp_ns = (1000000000 * seconds + (accumulator/TICKS_PER_NANOSECOND));
+  if(process->local_clock.state==FREQ) {
+    struct trace trace;
+    trace.channel = channel;
+    trace.state = state;
+    /* trace.timestamp_ns = (1000000000 * seconds + 1e9 * (double)accumulator/TICKS_PER_SECOND); */
+    trace.timestamp_ns = (1000000000 * seconds + (accumulator/TICKS_PER_NANOSECOND));
 
-  g_debug("writing trace to file");
-  // print trace using output module write function
-  (*process->output->write)(process->output, &trace);
+    g_debug("writing trace to file");
+    // print trace using output module write function
+    (*process->output->write)(process->output, &trace);
+  }
 }
 
 void data_feed_callback_efficient(const struct sr_dev_inst *sdi,
@@ -190,25 +176,26 @@ void data_feed_callback_efficient(const struct sr_dev_inst *sdi,
       for(size_t i = 0; i < payload->length; i++) {
         uint8_t curr = data[i];
         if(curr != last) {
+          uint8_t changed = (last^curr) & process->active_channels_mask;
           uint8_t state;
-          uint8_t changed = last^curr;
 
           if(changed) {
             for (size_t k = 0; k < process->channel_count ; k++) {
               uint8_t channel = process->channels[k].channel;
+              uint8_t channel_mask = 1 << channel-1;
               uint8_t mode = process->channels[k].mode;
 
-              if(changed & 1 << channel) {
-                if(G_UNLIKELY(channel==RECEIVER_CHANNEL) && (curr & 1 << channel)) { // only match rising flank
+              if(changed & channel_mask) {
+                if(G_UNLIKELY(channel==RECEIVER_CHANNEL) && (curr & channel_mask)) { // only match rising flank
                   handle_time_ref_signal(process);
-                } else {
-                  if((mode & MATCH_FALLING) && (last & 1 << channel)) { // falling signal
-                    state = 0;
-                  } else if (mode & MATCH_RISING) {  // rising signal
-                    state = 1;
-                  }
-
                 }
+
+                if((mode & MATCH_FALLING) && (last & channel_mask)) { // falling signal
+                  state = 0;
+                } else if (mode & MATCH_RISING) {  // rising signal
+                  state = 1;
+                }
+
                 handle_gpio_signal(process, state, channel);
               }
             }
@@ -240,6 +227,8 @@ int tracing_stop_instance(tracing_instance_t *process) {
     return -1;
   }
 
+  process->state = STOPPED;
+
   return 0;
 }
 
@@ -248,6 +237,14 @@ static int tracing_kill_instance(tracing_instance_t *process) {
 
   if(process->state==RUNNING || process->sr_session == NULL) {
     g_printf("Unable to kill instance. Instance still _running or no session created.\n");
+    return -1;
+  }
+
+
+  // close device
+  if ((ret = sr_dev_close(process->fx2ladw_dvc_instc))) {
+    g_printf("Error closing device (%s): %s.\n", sr_strerror_name(ret),
+             sr_strerror(ret));
     return -1;
   }
 
@@ -446,11 +443,11 @@ int tracing_init(tracing_instance_t *process, output_module_t *output, GVariant 
   process->channel_count = length;
   g_variant_get(channel_modes, "a(yy)", &iter);
 
-  process->active_channel_mask = 0;
+  process->active_channels_mask = 0;
   gint8 k = 0;
   while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) {
     g_printf("add channel %d with mode %d\n", channel, mode);
-    process->active_channel_mask += 1<<channel;
+    process->active_channels_mask += 1<<channel-1;
     process->channels[k].channel = channel;
     process->channels[k].mode = mode;
     k++;

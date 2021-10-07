@@ -5,8 +5,9 @@ After=dbus.service
 [Service]
 Type=dbus
 BusName=org.cau.gpiot
-Environment="LD_LIBRARY_PATH=/usr/testbed/gpio-tracer"
-ExecStart=/usr/testbed/gpio-tracer/gpiotd
+User=user
+# Environment="LD_LIBRARY_PATH=/usr/testbed/gpio-tracer"
+ExecStart=/usr/testbed/gpio-tracer2/gpio-tracer/build/src/gpiotd
 Restart=on-failure
 
 [Install]

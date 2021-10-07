@@ -130,7 +130,11 @@ int main(int argc, char *argv[]) {
   }
 
 
-  watcher_id = g_bus_watch_name(G_BUS_TYPE_SESSION, "org.cau.gpiot",
+  /* watcher_id = g_bus_watch_name(G_BUS_TYPE_SESSION, "org.cau.gpiot", */
+  /*                               G_BUS_NAME_WATCHER_FLAGS_NONE, on_name_appeared, */
+  /*                               on_name_vanished, NULL, NULL); */
+
+  watcher_id = g_bus_watch_name(G_BUS_TYPE_SYSTEM, "org.cau.gpiot",
                                 G_BUS_NAME_WATCHER_FLAGS_NONE, on_name_appeared,
                                 on_name_vanished, NULL, NULL);
 

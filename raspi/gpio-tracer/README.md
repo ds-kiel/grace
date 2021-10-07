@@ -11,8 +11,21 @@ See [stackoverflow](https://serverfault.com/questions/892465/starting-systemd-se
   apt install default-dbus-session-bus # Needed for running dbus-user sessions. Only needed for development
   reboot
 ```
+
+
 #### Enable spidev
 Either use raspi-config and enable SPI or add `dtparam=spi=on` to `/boot/config.txt`
+additionaly the user running the daemon will have to be added to the `spi`  and the `plugdev` group.
+```
+usermod -a -G spi user
+usermod -a -G plugdev user
+```
+
+#### Enable udev rules
+```
+ln -s /usr/lib/udev/rules.d/61-libsigrok-plugdev.rules /etc/udev/rules.d/61-libsigrok-plugdev.rules
+ln -s /usr/lib/udev/rules.d/61-libsigrok-uaccess.rules /etc/udev/rules.d/61-libsigrok-uaccess.rules
+```
 
 ```
   pip3 install flask-restful dbus-python requests
@@ -24,8 +37,6 @@ Either use raspi-config and enable SPI or add `dtparam=spi=on` to `/boot/config.
 
 ```
     cp systemd/dbus-org.cau.gpiot.service /etc/systemd/system/
-    cp systemd/collector-rest-server.service /etc/systemd/system/
-    cp systemd/sync-node-rest-server.service /etc/systemd/system/
     cp systemd/org.cau.gpiot.service /usr/share/dbus-1/system-services/
     cp systemd/gpiot.conf /etc/dbus-1/system.d/
 ```
@@ -45,12 +56,10 @@ First make sure to enable and start the systemd service:
 
 ```
     systemctl daemon-reload
-
     systemctl enable dbus-org.cau.gpiot
-    systemctl enable collector-rest-server.service
-
     systemctl start dbus-org.cau.gpiot
-    systemctl start collector-rest-server.service
+
+    journalctl -u dbus-org.cau.gpiot -f
 ```
 
 After that the daemon can be controlled with `gpiotc`.

@@ -17,7 +17,6 @@ typedef enum clock_state {
 typedef enum process_state {
   STOPPED,
   RUNNING,
-  ERROR,
 } process_state_t;
 
 struct channel_mode {
@@ -56,7 +55,7 @@ typedef struct tracing_instance {
   struct sr_dev_inst *fx2ladw_dvc_instc;
 
   guint8 channel_count;
-  char active_channel_mask;
+  char active_channels_mask;
   struct channel_mode *channels;
 
   GAsyncQueue *trace_queue;
