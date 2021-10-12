@@ -2,7 +2,6 @@
 #define TRACING_H
 
 #include <glib.h>
-#include <libsigrok/libsigrok.h>
 #include <output_module.h>
 #include <types.h>
 
@@ -50,9 +49,6 @@ struct lclock {
 
 typedef struct tracing_instance {
   process_state_t state;
-  struct sr_context *sr_cntxt;
-  struct sr_session *sr_session;
-  struct sr_dev_inst *fx2ladw_dvc_instc;
 
   guint8 channel_count;
   char active_channels_mask;

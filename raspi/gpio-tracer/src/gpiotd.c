@@ -6,7 +6,10 @@
 #include <chunked_output.h>
 #include <types.h>
 #include <inttypes.h>
+
+#ifdef WITH_TIMESYNC
 #include <radio.h>
+#endif
 
 #include <gio/gio.h>
 #include <glib.h>
@@ -72,29 +75,39 @@ static int start_tasks(GVariant* channel_modes) {
   tracing_task = malloc(sizeof(tracing_instance_t));
   chunked_output = chunked_output_new();
 
+  #ifdef WITH_TIMESYNC
   if ((ret = radio_init(_timestamp_unref_queue, _timestamp_ref_queue)) < 0) {
     return -1;
   }
+  #endif
 
   if ((ret = chunked_output_init(chunked_output, trace_path))) {
+    #ifdef WITH_TIMESYNC
     radio_deinit();
+    #endif
     return -1;
   }
 
   if ((ret = tracing_init(tracing_task, (output_module_t*) chunked_output, channel_modes, _timestamp_unref_queue, _timestamp_ref_queue))) {
+    #ifdef WITH_TIMESYNC
     radio_deinit();
+    #endif
     chunked_output_deinit(chunked_output);
     return -1;
   }
 
   // start thread
+  #ifdef WITH_TIMESYNC
   radio_start_reception();
+  #endif
 
   return 0;
 }
 
 static int stop_tasks() {
+  #ifdef WITH_TIMESYNC
   radio_deinit();
+  #endif
   tracing_stop_instance(tracing_task);
   chunked_output_deinit(chunked_output);
 
