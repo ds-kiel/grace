@@ -23,6 +23,8 @@ int send_control_command(struct fx2_device_manager *manager_instc,
                          uint16_t wValue, uint16_t wIndex, unsigned char *data,
                          uint16_t wLength);
 
+void pretty_print_memory(char *mem, int starting_addr, size_t bytes);
+
 int fx2_init_manager(struct fx2_device_manager *manager_instc);
 int fx2_find_devices(struct fx2_device_manager *manager_instc);
 int fx2_open_device(struct fx2_device_manager *manager_instc);

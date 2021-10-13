@@ -12,7 +12,7 @@ struct fx2_usb_device {
     {0x0000, 0x0000, NULL},
 };
 
-static void pretty_print_memory(char *mem, int starting_addr, size_t bytes) {
+void pretty_print_memory(char *mem, int starting_addr, size_t bytes) {
   const int bytes_per_line = 16;
   int written = 0;
 
@@ -189,7 +189,7 @@ static int fx2_device_ready(struct fx2_device_manager *manager_instc) {
 }
 
 // Simple wrapper around libusb_control_transfer that checks whether a valid
-// device is claimed.
+// device is claimed. Returns amount of bytes transffered on success
 int send_control_command(struct fx2_device_manager *manager_instc,
                          uint8_t bmRequestType, uint8_t bRequest,
                          uint16_t wValue, uint16_t wIndex, unsigned char *data,
@@ -210,7 +210,7 @@ int send_control_command(struct fx2_device_manager *manager_instc,
     return -1;
   }
 
-  return 0;
+  return ret;
 }
 
 #define FX2_PROG_RAM_TOP 0x3FFF
@@ -261,22 +261,37 @@ int fx2_cpu_unset_reset(struct fx2_device_manager *manager_instc) {
 
 // Upload/Download only possible when CPU is held in reset state
 // CPUCS Register can be used to put system in and out of reset
-// Precondition: CPU has to be set into RESET state; Buffer has size FX2_PROG_RAM_TOP - FX2_PROG_RAM_BOT
+// Precondition: CPU has to be set into RESET state; array pointed to by buf has size FX2_PROG_RAM_TOP - FX2_PROG_RAM_BOT
 int fx2_upload_firmware(struct fx2_device_manager *manager_instc, unsigned char *buf) {
 
   int ret;
-  int _length = 10;
-  unsigned char ram[_length];
-  if ((ret = send_control_command(
-           manager_instc,
-           LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_REQUEST_HOST_TO_DEVICE,
-           LIBUSB_FX2_LOAD_FIRMWARE, FX2_PROG_RAM_BOT, 0, ram, _length)) <= 0) {
-    g_error("could not read ram contents, ret: %d / %s", ret,
-            libusb_error_name(ret));
-    return -1;
-  }
+  size_t length = FX2_PROG_RAM_TOP - FX2_PROG_RAM_BOT;
+  size_t received_bytes = 0;
 
-  pretty_print_memory(ram, FX2_DATA_RAM_BOT, FX2_PROG_RAM_TOP - FX2_PROG_RAM_BOT);
+  #define __MAX_READ_BYTES 8192
+
+  while(received_bytes < length) {
+    int read = length-received_bytes > __MAX_READ_BYTES ? __MAX_READ_BYTES : length-received_bytes;
+
+    // addresses have to be word aligned i.e. they have to be evenly divisible by two
+    if(((FX2_PROG_RAM_BOT + received_bytes) & 1) > 0) {
+      received_bytes -= 1;
+      g_message("starting address not aligned to word boundary, new start address: 0x%lx", FX2_PROG_RAM_BOT + received_bytes);
+    }
+
+    if ((ret = send_control_command(
+                                    manager_instc,
+                                    LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_REQUEST_HOST_TO_DEVICE,
+                                    LIBUSB_FX2_LOAD_FIRMWARE, FX2_PROG_RAM_BOT + received_bytes, 0, buf + received_bytes, read)) <= 0) {
+      g_error("could not read ram contents, ret: %d / %s", ret,
+              libusb_error_name(ret));
+      return -1;
+    }
+
+    g_message("starting from %lx read %d bytes from program memory", FX2_PROG_RAM_BOT + received_bytes, ret);
+
+    received_bytes += ret;
+  }
 
   return 0;
 }
@@ -291,37 +306,33 @@ int fx2_download_firmware(struct fx2_device_manager *manager_instc,
   while(transferred_bytes < length) {
     if ((ret = send_control_command(
                                     manager_instc,
-                                    LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_REQUEST_HOST_TO_DEVICE,
-                                    LIBUSB_FX2_LOAD_FIRMWARE, FX2_PROG_RAM_BOT, 0, data[transferred_bytes], length-transferred_bytes)) <= 0) {
+                                    LIBUSB_REQUEST_TYPE_VENDOR,
+                                    LIBUSB_FX2_LOAD_FIRMWARE, FX2_PROG_RAM_BOT, 0, data  + transferred_bytes, length-transferred_bytes)) <= 0) {
       // although not strictly an USB error, transmission with 0 length;  should not occur when downloading to EZ-USB Ram
-      g_error("could not read ram contents, ret: %d / %s", ret,
+      g_error("could not write ram contents, ret: %d / %s", ret,
               libusb_error_name(ret));
       return -1;
     }
+
+    g_message("Wrote %zu of %zu bytes", transferred_bytes, length);
 
     transferred_bytes += ret;
   }
 
   if (verify) {
-    unsigned char read_back[FX2_PROG_RAM_TOP - FX2_PROG_RAM_BOT];
+    size_t read_length = FX2_PROG_RAM_TOP - FX2_PROG_RAM_BOT;
+    unsigned char read_back[read_length];
 
     fx2_upload_firmware(manager_instc, read_back);
 
-    if (memcmp((void *)read_back, (void *) data, length)==0) {
-      g_message("success!");
+    if ((ret = memcmp((void *)read_back, (void *) data, length)) == 0) {
+      g_message("Verification complete. firmware transferred successfully");
     }
   }
 
 
-
-  return 0;}
-
-
-int fx2_load_bix() {
-  // 2. write bix into ram
-  // 1. reset device (through reset code written into ram??? see example)
-  return -1;
-};
+  return 0;
+}
 
 int fx2_reset_device(struct fx2_device_manager *manager_instc,
                      libusb_device *target_dev) {
