@@ -139,7 +139,7 @@ default:
 #endif
 
 // GPIO signal handling
-static inline void handle_gpio_signal(tracing_instance_t *process, uint8_t state, uint8_t channel) {
+static inline void handle_gpio_signal(tracing_instance_t *process, guint8 state, guint8 channel) {
   /* struct trace *trace = malloc(sizeof(struct trace)); */
   if(process->local_clock.state==FREQ) {
     struct trace trace;
@@ -158,7 +158,7 @@ static inline void handle_gpio_signal(tracing_instance_t *process, uint8_t state
 /*                                             const struct sr_datafeed_packet *packet, */
 /*                                             void *cb_data) { */
 /*   static gboolean initial_df_logic_packet = TRUE; */
-/*   static uint8_t last; */
+/*   static guint8 last; */
 /*   tracing_instance_t *process = (tracing_instance_t*) cb_data; */
 /*   /\* static guint64 first_sync_timestamp; *\/ */
 
@@ -172,7 +172,7 @@ static inline void handle_gpio_signal(tracing_instance_t *process, uint8_t state
 /*     } */
 /*     case SR_DF_LOGIC: { */
 /*       struct sr_datafeed_logic *payload = (struct sr_datafeed_logic*) packet->payload; */
-/*       uint8_t* data = payload->data; */
+/*       guint8* data = payload->data; */
 
 /*       if(initial_df_logic_packet) { */
 /*         last = data[0]; */
@@ -180,16 +180,16 @@ static inline void handle_gpio_signal(tracing_instance_t *process, uint8_t state
 /*       } */
 
 /*       for(size_t i = 0; i < payload->length; i++) { */
-/*         uint8_t curr = data[i]; */
+/*         guint8 curr = data[i]; */
 /*         if(curr != last) { */
-/*           uint8_t changed = (last^curr) & process->active_channels_mask; */
-/*           uint8_t state; */
+/*           guint8 changed = (last^curr) & process->active_channels_mask; */
+/*           guint8 state; */
 
 /*           if(changed) { */
 /*             for (size_t k = 0; k < process->channel_count ; k++) { */
-/*               uint8_t channel = process->channels[k].channel; */
-/*               uint8_t channel_mask = 1 << channel-1; */
-/*               uint8_t mode = process->channels[k].mode; */
+/*               guint8 channel = process->channels[k].channel; */
+/*               guint8 channel_mask = 1 << channel-1; */
+/*               guint8 mode = process->channels[k].mode; */
 
 /*               if(changed & channel_mask) { */
 /*                 if(G_UNLIKELY(channel==RECEIVER_CHANNEL) && (curr & channel_mask)) { // only match rising flank */

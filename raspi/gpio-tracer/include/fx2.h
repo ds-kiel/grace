@@ -2,6 +2,7 @@
 #define FX2_H
 
 #include <libusb.h>
+#include <glib.h>
 
 // Vendor Requests
 #define LIBUSB_FX2_LOAD_FIRMWARE 0xA0
@@ -19,9 +20,9 @@ struct fx2_device_manager {
 };
 
 int send_control_command(struct fx2_device_manager *manager_instc,
-                         uint8_t bmRequestType, uint8_t bRequest,
-                         uint16_t wValue, uint16_t wIndex, unsigned char *data,
-                         uint16_t wLength);
+                         guint8 bmRequestType, guint8 bRequest,
+                         guint16 wValue, guint16 wIndex, unsigned char *data,
+                         guint16 wLength);
 
 void pretty_print_memory(char *mem, int starting_addr, size_t bytes);
 

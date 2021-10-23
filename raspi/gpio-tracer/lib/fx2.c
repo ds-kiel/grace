@@ -199,9 +199,9 @@ static int fx2_device_ready(struct fx2_device_manager *manager_instc) {
 // Simple wrapper around libusb_control_transfer that checks whether a valid
 // device is claimed. Returns amount of bytes transffered on success
 int send_control_command(struct fx2_device_manager *manager_instc,
-                         uint8_t bmRequestType, uint8_t bRequest,
-                         uint16_t wValue, uint16_t wIndex, unsigned char *data,
-                         uint16_t wLength) {
+                         guint8 bmRequestType, guint8 bRequest,
+                         guint16 wValue, guint16 wIndex, unsigned char *data,
+                         guint16 wLength) {
   int ret;
   libusb_device_handle *dev_handl;
 
@@ -228,11 +228,11 @@ int send_control_command(struct fx2_device_manager *manager_instc,
 #define FX2_DATA_RAM_BOT 0xE000
 
 
-static int valid_addr_range(uint16_t addr);
+static int valid_addr_range(guint16 addr);
 
 // writes single byte to addr
 static int fx2_mem_write_byte(struct fx2_device_manager *manager_instc,
-                              uint16_t addr, unsigned char byte) {
+                              guint16 addr, unsigned char byte) {
 
   int ret;
   unsigned char _byte[1] = {byte};

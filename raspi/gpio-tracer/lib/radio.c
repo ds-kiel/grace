@@ -16,7 +16,7 @@ static GAsyncQueue *_timestamp_unref_queue; // process incoming gpio signals cap
 
 
 static gpointer radio_thread_func(gpointer data) {
-  static uint8_t no_signal_cnt = 0;
+  static guint8 no_signal_cnt = 0;
 
   _running = 1;
   while(_running) {
@@ -58,11 +58,11 @@ static gpointer radio_thread_func(gpointer data) {
         bytes_avail = cc1101_rx_fifo_bytes();
         g_message("bytes in queue: %d", bytes_avail);
         if(bytes_avail == 7) { // 4 bytes data + additional information (radio strength, ...)
-          uint8_t read_buf[bytes_avail];
-          uint32_t reference_timestamp_sec;
+          guint8 read_buf[bytes_avail];
+          guint32 reference_timestamp_sec;
 
           cc1101_read_rx_fifo(read_buf, bytes_avail);
-          memcpy(&reference_timestamp_sec, read_buf+1, sizeof(uint32_t));
+          memcpy(&reference_timestamp_sec, read_buf+1, sizeof(guint32));
 
           g_message("Got reference seconds: %d", reference_timestamp_sec);
 
