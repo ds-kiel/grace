@@ -10,8 +10,12 @@ struct fx2_usb_device {
   char *deviceString;
 } candidate_devices[] = {
     {0x0925, 0x3881, "Vendor-Specific Device"},
-    {0x1209, 0x0001, "FX2 Logic Analyzer"},
+    {0x1991, 0x0111, "FX2 Logic Analyzer"},
     {0x0000, 0x0000, NULL},
+};
+
+struct fx2_transfer_stat {
+  int bytes_transfered;
 };
 
 void pretty_print_memory(char *mem, int starting_addr, size_t bytes) {
@@ -271,7 +275,6 @@ int fx2_cpu_unset_reset(struct fx2_device_manager *manager_instc) {
 }
 
 
-// TODO is there any way to determine the maximum control transfer size directly through libusb?
 #define __MAX_READ_BYTES 4096
 // Upload/Download only possible when CPU is held in reset state
 // CPUCS Register can be used to put system in and out of reset
@@ -323,7 +326,7 @@ int fx2_download_firmware(struct fx2_device_manager *manager_instc,
     if ((ret = send_control_command(
                                     manager_instc,
                                     LIBUSB_REQUEST_TYPE_VENDOR,
-                                    LIBUSB_FX2_LOAD_FIRMWARE, FX2_PROG_RAM_BOT, 0, data  + transferred_bytes, write)) <= 0) {
+                                    LIBUSB_FX2_LOAD_FIRMWARE, FX2_PROG_RAM_BOT + transferred_bytes, 0, data  + transferred_bytes, write)) <= 0) {
       // although not strictly an USB error, transmission with 0 length;  should not occur when downloading to EZ-USB Ram
       g_error("could not write ram contents, ret: %d / %s", ret,
               libusb_error_name(ret));
@@ -342,10 +345,12 @@ int fx2_download_firmware(struct fx2_device_manager *manager_instc,
     fx2_upload_firmware(manager_instc, read_back);
 
     if ((ret = memcmp((void *)read_back, (void *) data, length)) == 0) {
-      g_message("Verification complete. firmware transferred successfully");
+      g_message("Verification complete. Firmware downloaded successfully");
+    } else {
+      g_message("verification complete. Firmware download failed");
+      return -2;
     }
   }
-
 
   return 0;
 }
@@ -387,28 +392,38 @@ void transfer_callback(struct libusb_transfer *transfer) {
 
 void* fx2_transfer_loop_thread_func(void *thread_data) {
   struct fx2_device_manager *manager_instc = (struct fx2_device_manager*) thread_data;
-  #define MAX_BYTES 4096
-  static unsigned char data[MAX_BYTES];
-  struct libusb_transfer *transfer;
+  #define MAX_BYTES 512
+  #define TRANSFERS 1000
+  unsigned char data[TRANSFERS][MAX_BYTES];
+  struct libusb_transfer *transfers[TRANSFERS];
   int continue_sampling = 0x01;
 
   g_message("sampling thread started");
 
-  // 1. Allocate libusb_transfer
-  // 2. Fill transfer with transfer information
-  // 3. submit transfer
-  // 4. Examine transfer structure for transfer result
+  // 1. Allocate transfers
+  // 2. Fill transfers with transfer information
+  // 3. submit transfers
+  // 4. Examine transfer structure from callback
   // 5. Deallocate resources
 
-  transfer = libusb_alloc_transfer(0);
-  libusb_fill_bulk_transfer(transfer, manager_instc->fx2_dev_handl, 0x82, data, MAX_BYTES, &transfer_callback, (void *)&continue_sampling, 100);
+  for (size_t i = 0; i < TRANSFERS; ++i) {
+    transfers[i] = libusb_alloc_transfer(0);
+    libusb_fill_bulk_transfer(transfers[i], manager_instc->fx2_dev_handl, 0x82, data[i], MAX_BYTES, &transfer_callback, (void *)&continue_sampling, 2000);
+  }
 
-  libusb_submit_transfer(transfer);
+  for (size_t i = 0; i < TRANSFERS; ++i) {
+    libusb_submit_transfer(transfers[i]);
+  }
 
   while (1) {
     /* sleep(1); */
     /* g_message("sampling thread running"); */
     libusb_handle_events(manager_instc->libusb_cntxt);
+
+  }
+
+  for (size_t i = 0; i < TRANSFERS; ++i) {
+    libusb_free_transfer(transfers[i]);
   }
 }
 

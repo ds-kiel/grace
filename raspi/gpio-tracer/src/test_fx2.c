@@ -71,12 +71,15 @@ int main(int argc, char *argv[]) {
   fx2_open_device(&manager);
 
   sleep(2);
-  fx2_start_sampling(&manager);
+
 
   GThread *transfer_thread;
   transfer_thread = g_thread_new("bulk transfer thread", &fx2_transfer_loop_thread_func, (void *)&manager);
 
+  fx2_start_sampling(&manager);
+
   g_thread_join(transfer_thread);
+
 
   fx2_close_device(&manager);
 
