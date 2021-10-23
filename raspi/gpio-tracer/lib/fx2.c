@@ -24,10 +24,13 @@ void pretty_print_memory(char *mem, int starting_addr, size_t bytes) {
   } printf("\n");
 
   for(int l_addr = starting_addr; l_addr < starting_addr+bytes; l_addr+=bytes_per_line) {
-    printf("0x%x ", l_addr);
+    printf("0x%04x    ", l_addr);
     for(int b = 0; b < bytes_per_line; b++) {
       printf("%02x ", 0xFF & mem[written]);
-      written++;
+      if(++written >= bytes) {
+        printf("\n");
+        return;
+      }
     } printf("\n");
   }
 }
@@ -267,6 +270,9 @@ int fx2_cpu_unset_reset(struct fx2_device_manager *manager_instc) {
   return __fx2_cpu_set_reset_state(manager_instc, 0x00);
 }
 
+
+// TODO is there any way to determine the maximum control transfer size directly through libusb?
+#define __MAX_READ_BYTES 4096
 // Upload/Download only possible when CPU is held in reset state
 // CPUCS Register can be used to put system in and out of reset
 // Precondition: CPU has to be set into RESET state; array pointed to by buf has size FX2_PROG_RAM_TOP - FX2_PROG_RAM_BOT
@@ -275,8 +281,6 @@ int fx2_upload_firmware(struct fx2_device_manager *manager_instc, unsigned char 
   int ret;
   size_t length = FX2_PROG_RAM_TOP - FX2_PROG_RAM_BOT;
   size_t received_bytes = 0;
-
-  #define __MAX_READ_BYTES 8192
 
   while(received_bytes < length) {
     int read = length-received_bytes > __MAX_READ_BYTES ? __MAX_READ_BYTES : length-received_bytes;
@@ -304,6 +308,8 @@ int fx2_upload_firmware(struct fx2_device_manager *manager_instc, unsigned char 
   return 0;
 }
 
+
+#define __MAX_WRITE_BYTES 4096
 // Download data into EZ-USB memory
 int fx2_download_firmware(struct fx2_device_manager *manager_instc,
                           unsigned char *data, size_t length, int verify) {
@@ -312,10 +318,12 @@ int fx2_download_firmware(struct fx2_device_manager *manager_instc,
   size_t transferred_bytes = 0;
 
   while(transferred_bytes < length) {
+    int write = length-transferred_bytes > __MAX_WRITE_BYTES ? __MAX_WRITE_BYTES : length-transferred_bytes;
+
     if ((ret = send_control_command(
                                     manager_instc,
                                     LIBUSB_REQUEST_TYPE_VENDOR,
-                                    LIBUSB_FX2_LOAD_FIRMWARE, FX2_PROG_RAM_BOT, 0, data  + transferred_bytes, length-transferred_bytes)) <= 0) {
+                                    LIBUSB_FX2_LOAD_FIRMWARE, FX2_PROG_RAM_BOT, 0, data  + transferred_bytes, write)) <= 0) {
       // although not strictly an USB error, transmission with 0 length;  should not occur when downloading to EZ-USB Ram
       g_error("could not write ram contents, ret: %d / %s", ret,
               libusb_error_name(ret));
