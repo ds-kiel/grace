@@ -26,12 +26,28 @@ int send_control_command(struct fx2_device_manager *manager_instc,
 void pretty_print_memory(char *mem, int starting_addr, size_t bytes);
 
 int fx2_init_manager(struct fx2_device_manager *manager_instc);
+
 int fx2_find_devices(struct fx2_device_manager *manager_instc);
+
 int fx2_open_device(struct fx2_device_manager *manager_instc);
+
 int fx2_close_device(struct fx2_device_manager *manager_instc);
+
 int fx2_upload_firmware(struct fx2_device_manager *manager_instc, unsigned char *buf);
+
 int fx2_download_firmware(struct fx2_device_manager *manager_instc, unsigned char *buf, size_t length, int verify);
+
+/*
+  performs single blocking synchronous bulk transfer
+*/
+int fx2_submit_bulk_transfer(struct fx2_device_manager *manager_instc);
+
+void* fx2_transfer_loop_thread_func(void *thread_data);
+
+int fx2_start_sampling(struct fx2_device_manager *manager_instc);
+
 int fx2_cpu_set_reset(struct fx2_device_manager *manager_instc);
+
 int fx2_cpu_unset_reset(struct fx2_device_manager *manager_instc);
 
 #endif /* FX2_H */

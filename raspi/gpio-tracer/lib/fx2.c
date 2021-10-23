@@ -2,6 +2,7 @@
 #include <fx2.h>
 #include <glib.h>
 #include <stdio.h>
+#include <unistd.h>
 
 struct fx2_usb_device {
   int vendorID;
@@ -9,6 +10,7 @@ struct fx2_usb_device {
   char *deviceString;
 } candidate_devices[] = {
     {0x0925, 0x3881, "Vendor-Specific Device"},
+    {0x1209, 0x0001, "FX2 Logic Analyzer"},
     {0x0000, 0x0000, NULL},
 };
 
@@ -58,44 +60,6 @@ static int device_is_candidate(struct libusb_device_descriptor *desc) {
   return 0;
 }
 
-int fx2_find_devices(struct fx2_device_manager *manager_instc) {
-  struct libusb_context *libusb_cntxt;
-  libusb_device **dev_list;
-  int devs;
-
-  libusb_cntxt = manager_instc->libusb_cntxt;
-
-  // enumerate available devices
-  if ((devs = libusb_get_device_list(libusb_cntxt, &dev_list)) < 0) {
-    g_error("Could not enumerate devices %s", libusb_error_name(devs));
-    return -1;
-  }
-
-  for (libusb_device **curr_device = dev_list; *curr_device != NULL;
-       curr_device++) {
-    struct libusb_device_descriptor desc;
-    struct libusb_device_handle *dev_handl;
-
-    libusb_get_device_descriptor(*curr_device, &desc);
-    g_message("Found USB device: VendorID: %x, ProductID: %x", desc.idVendor,
-              desc.idProduct);
-
-    if (device_is_candidate(&desc)) {
-      g_message("Foud device with string descriptors: ");
-      g_message("Manufacturer desc. index: %d ", desc.iManufacturer);
-      g_message("Product desc. index: %d ", desc.iProduct);
-
-      manager_instc->fx2_dev = *curr_device;
-      manager_instc->fx2_desc = desc;
-    }
-  }
-
-  libusb_free_device_list(dev_list, 1); // second argument > 0 if devices in
-                                        // lists should be unreferenced as well
-
-  return -1;
-}
-
 // precondition: device is open
 static int fx2_get_string_descriptor(struct fx2_device_manager *manager_instc) {
   int ret;
@@ -126,6 +90,46 @@ static int fx2_get_string_descriptor(struct fx2_device_manager *manager_instc) {
   return 0;
 }
 
+
+int fx2_find_devices(struct fx2_device_manager *manager_instc) {
+  struct libusb_context *libusb_cntxt;
+  libusb_device **dev_list;
+  int devs;
+
+  libusb_cntxt = manager_instc->libusb_cntxt;
+
+  // enumerate available devices
+  if ((devs = libusb_get_device_list(libusb_cntxt, &dev_list)) < 0) {
+    g_error("Could not enumerate devices %s", libusb_error_name(devs));
+    return -1;
+  }
+
+  for (libusb_device **curr_device = dev_list; *curr_device != NULL;
+       curr_device++) {
+    struct libusb_device_descriptor desc;
+    struct libusb_device_handle *dev_handl;
+
+    libusb_get_device_descriptor(*curr_device, &desc);
+    g_message("Found USB device: VendorID: %x, ProductID: %x", desc.idVendor,
+              desc.idProduct);
+
+    if (device_is_candidate(&desc)) {
+      g_message("Found device with string descriptors: ");
+      g_message("Manufacturer desc. index: %d ", desc.iManufacturer);
+      g_message("Product desc. index: %d ", desc.iProduct);
+
+      manager_instc->fx2_dev = *curr_device;
+      manager_instc->fx2_desc = desc;
+    }
+  }
+
+  libusb_free_device_list(dev_list, 1); // second argument > 0 if devices in
+                                        // lists should be unreferenced as well
+
+  return -1;
+}
+
+
 int fx2_open_device(struct fx2_device_manager *manager_instc) {
   int ret;
   struct libusb_device *dev;
@@ -149,6 +153,8 @@ int fx2_open_device(struct fx2_device_manager *manager_instc) {
     return -1;
   }
 
+  //fx2_get_string_descriptor(manager_instc);
+
   if ( (ret = libusb_claim_interface(*dev_handl, 0)) < 0) {
     g_error("Could not claim interface 0: %s", libusb_error_name(ret));
     return -1;
@@ -164,16 +170,18 @@ int fx2_open_device(struct fx2_device_manager *manager_instc) {
 }
 
 int fx2_close_device(struct fx2_device_manager *manager_instc) {
-  struct libusb_device_handle *dev_handl;
+  struct libusb_device_handle **dev_handl;
+
+  g_message("Closing device");
 
   // TODO error checking
-  dev_handl = manager_instc->fx2_dev_handl;
+  dev_handl = &manager_instc->fx2_dev_handl;
 
-  libusb_release_interface(dev_handl, 0);
+  libusb_release_interface(*dev_handl, 0);
 
-  libusb_close(dev_handl);
+  libusb_close(*dev_handl);
 
-  dev_handl = NULL;
+  *dev_handl = NULL;
 
   return 0;
 }
@@ -288,7 +296,7 @@ int fx2_upload_firmware(struct fx2_device_manager *manager_instc, unsigned char 
       return -1;
     }
 
-    g_message("starting from %lx read %d bytes from program memory", FX2_PROG_RAM_BOT + received_bytes, ret);
+    g_message("starting from 0x%lx read %d bytes from program memory", FX2_PROG_RAM_BOT + received_bytes, ret);
 
     received_bytes += ret;
   }
@@ -330,6 +338,86 @@ int fx2_download_firmware(struct fx2_device_manager *manager_instc,
     }
   }
 
+
+  return 0;
+}
+
+#define VC_START_SAMP 0xB2 // TODO shared header between firmware and software
+// Download data into EZ-USB memory
+int fx2_start_sampling(struct fx2_device_manager *manager_instc) {
+  int ret;
+  size_t transferred_bytes = 0;
+
+  g_message("send start sampling command to device");
+
+  if ((ret = send_control_command(
+                                  manager_instc,
+                                  LIBUSB_REQUEST_TYPE_VENDOR,
+                                  VC_START_SAMP, 0x00, 0, NULL, 0)) < 0) {
+    g_error("could not start tracing:");
+    return -1;
+  }
+
+  return 0;
+}
+
+
+void transfer_callback(struct libusb_transfer *transfer) {
+  /* g_message("Transfer finished with: %d", transfer->status); */
+
+  if (transfer->status == 0) {
+    /* g_message("Got %d bytes", transfer->actual_length); */
+  } else {
+    g_message("Transfer failed with status code: %d", transfer->status);
+  }
+
+  if(*(int*)transfer->user_data == 0x01) {
+    libusb_submit_transfer(transfer);
+  }
+}
+
+
+void* fx2_transfer_loop_thread_func(void *thread_data) {
+  struct fx2_device_manager *manager_instc = (struct fx2_device_manager*) thread_data;
+  #define MAX_BYTES 4096
+  static unsigned char data[MAX_BYTES];
+  struct libusb_transfer *transfer;
+  int continue_sampling = 0x01;
+
+  g_message("sampling thread started");
+
+  // 1. Allocate libusb_transfer
+  // 2. Fill transfer with transfer information
+  // 3. submit transfer
+  // 4. Examine transfer structure for transfer result
+  // 5. Deallocate resources
+
+  transfer = libusb_alloc_transfer(0);
+  libusb_fill_bulk_transfer(transfer, manager_instc->fx2_dev_handl, 0x82, data, MAX_BYTES, &transfer_callback, (void *)&continue_sampling, 100);
+
+  libusb_submit_transfer(transfer);
+
+  while (1) {
+    /* sleep(1); */
+    /* g_message("sampling thread running"); */
+    libusb_handle_events(manager_instc->libusb_cntxt);
+  }
+}
+
+int fx2_submit_bulk_transfer(struct fx2_device_manager *manager_instc) {
+  static unsigned char data[MAX_BYTES];
+  int trans, ret;
+  static int cnt = 0;
+
+  if ((ret = libusb_bulk_transfer(manager_instc->fx2_dev_handl, 0x82, data, MAX_BYTES, &trans, 0)) < 0) {
+    g_message("libusb_bulk_transfer -> %s", libusb_error_name(ret));
+  }
+
+
+  if (! (++cnt % 100)) {
+    printf("Got %d bytes \n", trans);
+    cnt = 0;
+  }
 
   return 0;
 }

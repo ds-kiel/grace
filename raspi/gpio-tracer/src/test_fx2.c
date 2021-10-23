@@ -61,5 +61,24 @@ int main(int argc, char *argv[]) {
 
   /* fx2_upload_fw(&manager, NULL, 0); */
   fx2_cpu_unset_reset(&manager);
+
+  sleep(1);
+  fx2_close_device(&manager);
+
+  sleep(2);
+  fx2_find_devices(&manager);
+
+  fx2_open_device(&manager);
+
+  sleep(2);
+  fx2_start_sampling(&manager);
+
+  GThread *transfer_thread;
+  transfer_thread = g_thread_new("bulk transfer thread", &fx2_transfer_loop_thread_func, (void *)&manager);
+
+  g_thread_join(transfer_thread);
+
+  fx2_close_device(&manager);
+
   return 0;
 }
