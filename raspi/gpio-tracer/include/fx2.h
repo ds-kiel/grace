@@ -9,7 +9,7 @@
 
 #define LIBUSB_REQUEST_HOST_TO_DEVICE 0x01 << 7
 
-
+typedef void (*fx2_packet_callback_fn)(uint8_t *packet_data, int length, void *user_data);
 
 struct fx2_device_manager {
   libusb_context *libusb_cntxt;
@@ -17,7 +17,11 @@ struct fx2_device_manager {
   libusb_device_handle *fx2_dev_handl;
 
   struct libusb_device_descriptor fx2_desc;
+
+  fx2_packet_callback_fn packet_handler_cb;
+  void *transfer_cb_user_data;
 };
+
 
 int send_control_command(struct fx2_device_manager *manager_instc,
                          guint8 bmRequestType, guint8 bRequest,
@@ -38,14 +42,14 @@ int fx2_upload_firmware(struct fx2_device_manager *manager_instc, unsigned char 
 
 int fx2_download_firmware(struct fx2_device_manager *manager_instc, unsigned char *buf, size_t length, int verify);
 
+int fx2_set_packet_callback(struct fx2_device_manager *manager_instc, fx2_packet_callback_fn packet_handler, void *user_data);
+
 /*
   performs single blocking synchronous bulk transfer
 */
 int fx2_submit_bulk_transfer(struct fx2_device_manager *manager_instc);
 
 void* fx2_transfer_loop_thread_func(void *thread_data);
-
-int fx2_start_sampling(struct fx2_device_manager *manager_instc);
 
 int fx2_cpu_set_reset(struct fx2_device_manager *manager_instc);
 

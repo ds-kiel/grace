@@ -3,6 +3,8 @@
 
 #define CHUNK_SIZE 10000 // Number of traces per file
 
+#include <glib.h>
+
 typedef struct chunked_output chunked_output_t;
 
 chunked_output_t* chunked_output_new();

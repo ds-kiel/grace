@@ -11,6 +11,7 @@ struct fx2_usb_device {
 } candidate_devices[] = {
     {0x0925, 0x3881, "Vendor-Specific Device"},
     {0x1991, 0x0111, "FX2 Logic Analyzer"},
+    {0x04b4, 0x8613, "Cypress Semiconductor Vendor-Specific Device"},    
     {0x0000, 0x0000, NULL},
 };
 
@@ -355,36 +356,37 @@ int fx2_download_firmware(struct fx2_device_manager *manager_instc,
   return 0;
 }
 
-#define VC_START_SAMP 0xB2 // TODO shared header between firmware and software
-// Download data into EZ-USB memory
-int fx2_start_sampling(struct fx2_device_manager *manager_instc) {
-  int ret;
-  size_t transferred_bytes = 0;
-
-  g_message("send start sampling command to device");
-
-  if ((ret = send_control_command(
-                                  manager_instc,
-                                  LIBUSB_REQUEST_TYPE_VENDOR,
-                                  VC_START_SAMP, 0x00, 0, NULL, 0)) < 0) {
-    g_error("could not start tracing:");
-    return -1;
-  }
+int fx2_set_packet_callback(struct fx2_device_manager *manager_instc, fx2_packet_callback_fn packet_handler, void *user_data) {
+  manager_instc->packet_handler_cb = packet_handler;
+  manager_instc->transfer_cb_user_data = user_data; // TODO this is not really nice...
 
   return 0;
 }
 
+struct transfer_data {
+  uint8_t continue_sampling;
+  size_t  transfer_num;
+  fx2_packet_callback_fn callback;
+  void *cb_user_data;
+};
 
 void transfer_callback(struct libusb_transfer *transfer) {
+  static cnt = 0;
+  struct transfer_data *user_data = transfer->user_data;
   /* g_message("Transfer finished with: %d", transfer->status); */
 
   if (transfer->status == 0) {
-    /* g_message("Got %d bytes", transfer->actual_length); */
+    if(!(cnt++ % 1000)) {
+      g_message("Transfer %zu finished with %d bytes", user_data->transfer_num, transfer->actual_length);      
+    }
   } else {
     g_message("Transfer failed with status code: %d", transfer->status);
+    return;
   }
 
-  if(*(int*)transfer->user_data == 0x01) {
+  (*(user_data->callback))(transfer->buffer, transfer->actual_length, user_data->cb_user_data);
+
+  if(user_data->continue_sampling == 0x01) {
     libusb_submit_transfer(transfer);
   }
 }
@@ -394,9 +396,10 @@ void* fx2_transfer_loop_thread_func(void *thread_data) {
   struct fx2_device_manager *manager_instc = (struct fx2_device_manager*) thread_data;
   #define MAX_BYTES 512
   #define TRANSFERS 1000
+  /* unsigned char **data = malloc(TRANSFERS * MAX_BYTES * sizeof(unsigned char)); */
   unsigned char data[TRANSFERS][MAX_BYTES];
-  struct libusb_transfer *transfers[TRANSFERS];
-  int continue_sampling = 0x01;
+  struct libusb_transfer **transfers = malloc(TRANSFERS * sizeof(struct libusb_transfer*));
+  struct transfer_data *user_data = malloc(TRANSFERS * sizeof(struct transfer_data));
 
   g_message("sampling thread started");
 
@@ -408,7 +411,12 @@ void* fx2_transfer_loop_thread_func(void *thread_data) {
 
   for (size_t i = 0; i < TRANSFERS; ++i) {
     transfers[i] = libusb_alloc_transfer(0);
-    libusb_fill_bulk_transfer(transfers[i], manager_instc->fx2_dev_handl, 0x82, data[i], MAX_BYTES, &transfer_callback, (void *)&continue_sampling, 2000);
+    user_data[i].continue_sampling = 0x01;
+    user_data[i].transfer_num = i;
+    user_data[i].callback = manager_instc->packet_handler_cb;
+    // TODO this is not nice. User data for the user configured transfer callback is saved in two different structs
+    user_data[i].cb_user_data = manager_instc->transfer_cb_user_data;
+    libusb_fill_bulk_transfer(transfers[i], manager_instc->fx2_dev_handl, 0x82, data[i], MAX_BYTES, &transfer_callback, (void *)&(user_data[i]), 2000);
   }
 
   for (size_t i = 0; i < TRANSFERS; ++i) {
@@ -416,15 +424,15 @@ void* fx2_transfer_loop_thread_func(void *thread_data) {
   }
 
   while (1) {
-    /* sleep(1); */
-    /* g_message("sampling thread running"); */
     libusb_handle_events(manager_instc->libusb_cntxt);
-
   }
 
   for (size_t i = 0; i < TRANSFERS; ++i) {
     libusb_free_transfer(transfers[i]);
   }
+
+  free(transfers);
+  free(user_data);
 }
 
 int fx2_submit_bulk_transfer(struct fx2_device_manager *manager_instc) {

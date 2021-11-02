@@ -5,6 +5,10 @@
 
 int print_bix = 0;
 
+void packet_callback(uint8_t *packet_data, int length, void *user_data) {
+  g_message("Got %d\n", length);
+}
+
 int main(int argc, char *argv[]) {
   g_message("starting fx2 test program");
 
@@ -41,6 +45,7 @@ int main(int argc, char *argv[]) {
   fx2_init_manager(&manager);
   fx2_find_devices(&manager);
   fx2_open_device(&manager);
+  fx2_set_packet_callback(&manager, &packet_callback, NULL);
 
   unsigned char data[2];
 
@@ -65,7 +70,7 @@ int main(int argc, char *argv[]) {
   sleep(1);
   fx2_close_device(&manager);
 
-  sleep(2);
+  sleep(4);
   fx2_find_devices(&manager);
 
   fx2_open_device(&manager);
@@ -76,8 +81,12 @@ int main(int argc, char *argv[]) {
   GThread *transfer_thread;
   transfer_thread = g_thread_new("bulk transfer thread", &fx2_transfer_loop_thread_func, (void *)&manager);
 
-  fx2_start_sampling(&manager);
-
+  #define VC_START_SAMP 0xB2
+  send_control_command(
+                       &manager,
+                       LIBUSB_REQUEST_TYPE_VENDOR,
+                       VC_START_SAMP, 0x00, 0, NULL, 0);
+    
   g_thread_join(transfer_thread);
 
 

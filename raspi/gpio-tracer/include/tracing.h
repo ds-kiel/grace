@@ -4,6 +4,7 @@
 #include <glib.h>
 #include <output_module.h>
 #include <types.h>
+#include <fx2.h>
 
 #define ANALYZER_FREQUENCY 8000000
 
@@ -18,10 +19,31 @@ typedef enum process_state {
   RUNNING,
 } process_state_t;
 
-struct channel_mode {
-  guint8 channel;
-  gint8 mode;
+enum channel_state {
+  SAMPLE_NONE = 0,
+  SAMPLE_RISING = 1,
+  SAMPLE_FALLING = 2,
+  SAMPLE_ALL = SAMPLE_RISING | SAMPLE_FALLING,
+  SAMPLE_RADIO = 4
 };
+
+struct channel_configuration {
+    enum channel_state ch1;
+    enum channel_state ch2;
+    enum channel_state ch3;
+    enum channel_state ch4;
+    enum channel_state ch5;
+    enum channel_state ch6;
+    enum channel_state ch7;
+    enum channel_state ch8;
+};
+
+// TODO These declarations should be hidden from the user
+union __channel_configuration {
+  struct channel_configuration conf;
+  enum channel_state conf_arr[8];
+};
+
 
 struct lclock {
   clock_state_t state;
@@ -50,9 +72,8 @@ struct lclock {
 typedef struct tracing_instance {
   process_state_t state;
 
-  guint8 channel_count;
   char active_channels_mask;
-  struct channel_mode *channels;
+  union __channel_configuration chan_conf;
 
   GAsyncQueue *trace_queue;
   GAsyncQueue *timestamp_unref_queue;
@@ -60,17 +81,19 @@ typedef struct tracing_instance {
 
   output_module_t *output;
 
+  struct fx2_device_manager fx2_manager;
+
   struct lclock local_clock;
 } tracing_instance_t;
 
 /* --- proto --- */
-int tracing_init(tracing_instance_t *process, output_module_t *output, GVariant *channel_modes, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue);
-int tracing_stop_instance(tracing_instance_t *process);
+int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue);
+int tracing_start(tracing_instance_t *process, struct channel_configuration chan_conf);
+int tracing_stop(tracing_instance_t *process);
+
+void print_free_running_clock_time(tracing_instance_t *process);
 
 // TODO rename to something more meaninfull
 gboolean tracing_running(tracing_instance_t* process);
-
-static int tracing_init_sigrok(tracing_instance_t *process, guint32 samplerate);
-static int tracing_kill_instance(tracing_instance_t *process);
 
 #endif /* TRACING_H */

@@ -1,4 +1,5 @@
 #include <tracing.h>
+#include <fx2.h>
 
 #include <types.h>
 #include <output_module.h>
@@ -15,6 +16,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <math.h>
+#include <unistd.h>
 
 #define TICKS_PER_SECOND ((guint64) 1 << 60)
 #define TICKS_PER_NANOSECOND (((guint64) 1 << 60)/1000000000)
@@ -60,6 +62,23 @@ void tick(tracing_instance_t *process) {
     // open-loop
     clk->free_seq++;
   }
+  clk->free_seq++;  // TODO REMOVEMOVEMOVMEOMVOEMOVOMEOVE
+
+  // ^
+  // |
+  // |
+  // |
+  // LKASJDLKASJDLKASJD
+  // ALKJSDLKAJSDLKASJLDKJSA
+  //LAKSJDKLAJSDKLASD
+}
+
+void print_free_running_clock_time(tracing_instance_t *process) {
+  struct lclock *clk = &(process->local_clock);
+
+  guint64 timestamp_ns = (clk->free_seq * 125);
+
+  g_message("current_time of free running clock: %" G_GUINT64_FORMAT, timestamp_ns);  
 }
 
 // time reference signal handling
@@ -154,264 +173,55 @@ static inline void handle_gpio_signal(tracing_instance_t *process, guint8 state,
   }
 }
 
-/* void data_feed_callback_efficient(const struct sr_dev_inst *sdi, */
-/*                                             const struct sr_datafeed_packet *packet, */
-/*                                             void *cb_data) { */
-/*   static gboolean initial_df_logic_packet = TRUE; */
-/*   static guint8 last; */
-/*   tracing_instance_t *process = (tracing_instance_t*) cb_data; */
-/*   /\* static guint64 first_sync_timestamp; *\/ */
+void data_feed_callback(uint8_t *packet_data, int length, void *user_data) {
+  static gboolean initial_df_logic_packet = TRUE;
+  static guint8 last;
+  tracing_instance_t *process = (tracing_instance_t*)user_data;
 
-/*   switch (packet->type) { */
-/*     case SR_DF_HEADER: { */
-/*       struct sr_datafeed_header *payload = (struct sr_datafeed_header*) packet->payload; */
-/*       printf("got datafeed header: feed version %d, startime %lu\n", payload->feed_version, payload->starttime.tv_usec); */
-/*       initial_df_logic_packet = TRUE; */
+  if(initial_df_logic_packet) {
+    last = packet_data[0];
+    initial_df_logic_packet = FALSE;
+  }
 
-/*       break; */
-/*     } */
-/*     case SR_DF_LOGIC: { */
-/*       struct sr_datafeed_logic *payload = (struct sr_datafeed_logic*) packet->payload; */
-/*       guint8* data = payload->data; */
+  for(size_t i = 0; i < length; i++) {
+    guint8 curr = packet_data[i];
+    
+    if(curr != last) {
+      guint8 changed = (last^curr) & process->active_channels_mask;
+      guint8 state;
 
-/*       if(initial_df_logic_packet) { */
-/*         last = data[0]; */
-/*         initial_df_logic_packet = FALSE; */
-/*       } */
+      if(changed) {
+        for (size_t k = 0; k < sizeof(process->chan_conf.conf_arr); k++) {
+          guint8 channel_mask = 1 << (k-1);
+          guint8 mode = process->chan_conf.conf_arr[k];
 
-/*       for(size_t i = 0; i < payload->length; i++) { */
-/*         guint8 curr = data[i]; */
-/*         if(curr != last) { */
-/*           guint8 changed = (last^curr) & process->active_channels_mask; */
-/*           guint8 state; */
+          if(changed & channel_mask && process->chan_conf.conf_arr[k] != SAMPLE_NONE) {
+            if(G_UNLIKELY(process->chan_conf.conf_arr[k]==SAMPLE_RADIO) && (curr & channel_mask)) { // only match rising flank
+              #ifdef WITH_TIMESYNC
+              handle_time_ref_signal(process);
+              #endif
+            }
 
-/*           if(changed) { */
-/*             for (size_t k = 0; k < process->channel_count ; k++) { */
-/*               guint8 channel = process->channels[k].channel; */
-/*               guint8 channel_mask = 1 << channel-1; */
-/*               guint8 mode = process->channels[k].mode; */
+            if((mode & SAMPLE_FALLING) && (last & channel_mask)) { // falling signal
+              state = 0;
+            } else if (mode & SAMPLE_RISING) {  // rising signal
+              state = 1;
+            }
 
-/*               if(changed & channel_mask) { */
-/*                 if(G_UNLIKELY(channel==RECEIVER_CHANNEL) && (curr & channel_mask)) { // only match rising flank */
-/*                   handle_time_ref_signal(process); */
-/*                 } */
+            handle_gpio_signal(process, state, k);
+          }
+        }
+      }
+    }
+    last = curr;
+    tick(process);
+  }
+}
 
-/*                 if((mode & MATCH_FALLING) && (last & channel_mask)) { // falling signal */
-/*                   state = 0; */
-/*                 } else if (mode & MATCH_RISING) {  // rising signal */
-/*                   state = 1; */
-/*                 } */
-
-/*                 handle_gpio_signal(process, state, channel); */
-/*               } */
-/*             } */
-/*           } */
-/*         } */
-/*         last = curr; */
-/*         tick(process); */
-/*       } */
-/*       break; */
-/*     } */
-/*     case SR_DF_END: { */
-/*       g_printf("datastream from device ended\n"); */
-/*       break; */
-/*     } */
-/*     default: */
-/*       printf("unhandled payload type: %d\n", packet->type); */
-/*       break; */
-/*   } */
-
-/* } */
-
-int tracing_stop_instance(tracing_instance_t *process) {
+int tracing_stop(tracing_instance_t *process) {
   int ret;
 
-  // uninitialize sigrok
-  free(process->channels);
-  /* if ((ret = sr_session_stop(process->sr_session)) != SR_OK) { */
-  /*   printf("Error stopping sigrok session (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); */
-  /*   return -1; */
-  /* } */
-
   process->state = STOPPED;
-
-  return 0;
-}
-
-static int tracing_kill_instance(tracing_instance_t *process) {
-  /* int ret; */
-
-  /* if(process->state==RUNNING || process->sr_session == NULL) { */
-  /*   g_printf("Unable to kill instance. Instance still _running or no session created.\n"); */
-  /*   return -1; */
-  /* } */
-
-
-  /* // close device */
-  /* if ((ret = sr_dev_close(process->fx2ladw_dvc_instc))) { */
-  /*   g_printf("Error closing device (%s): %s.\n", sr_strerror_name(ret), */
-  /*            sr_strerror(ret)); */
-  /*   return -1; */
-  /* } */
-
-  /* if ((ret = sr_session_destroy(process->sr_session)) != SR_OK) { */
-  /*   g_printf("Error destroying sigrok session (%s): %s.\n", sr_strerror_name(ret), */
-  /*            sr_strerror(ret)); */
-  /*   return -1; */
-  /* } */
-
-  /* if ((ret = sr_exit(process->sr_cntxt)) != SR_OK) { */
-  /*   g_printf("Error shutting down libsigkrok (%s): %s.\n", sr_strerror_name(ret), */
-  /*            sr_strerror(ret)); */
-  /*   return -1; */
-  /* } */
-
-  /* process->sr_session = NULL; */
-  /* process->sr_cntxt = NULL; */
-
-  /* g_printf("Successfully killed sigrok instance\n"); */
-
-  return 0;
-}
-
-
-/* void session_stopped_callback(void* data) { */
-  /* tracing_instance_t* process= (tracing_instance_t*) data; */
-  /* g_printf("Session has stoppped!\n"); */
-  /* process->state = STOPPED; */
-  /* tracing_kill_instance(process); */
-/* } */
-
-
-// ownership of channel_modes is transfered to tracing_init_sigrok(), so the GVariant should not be unreffed by the callee!
-// returns -1 on failure. returns 1 if session already exists
-static int tracing_init_sigrok(tracing_instance_t *process, guint32 samplerate)
-{
-  /* int ret; */
-
-  /* g_printf("Initializing sigrok instance\n"); */
-
-
-  /* if ((ret = sr_init(&(process->sr_cntxt))) != SR_OK) { */
-  /*   printf("Error initializing libsigrok (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); */
-  /*   return -1; */
-  /* } */
-
-  /* printf("Host: %s\n", sr_buildinfo_host_get()); */
-  /* //initialize fx2lafw */
-
-  /* struct sr_dev_driver** avbl_drvs; */
-  /* if ((avbl_drvs = sr_driver_list(process->sr_cntxt)) == NULL) { */
-  /*   printf("No hardware drivers available\n"); */
-  /* } */
-
-  /* struct sr_dev_driver* fx2ladw_drv = NULL; */
-  /* for(size_t k = 0; avbl_drvs[k] != NULL; k++) { */
-  /*   if (!strcmp(avbl_drvs[k]->name, "fx2lafw")) { */
-  /*         printf(" found driver %s\n", avbl_drvs[k]->name); */
-  /*         fx2ladw_drv = avbl_drvs[k]; */
-  /*         break; */
-  /*   } */
-  /* } */
-
-  /* if (fx2ladw_drv==NULL) { */
-  /*   printf("Could not find driver fx2lafw!\n"); */
-  /*   return -1; */
-  /* } */
-
-  /* if ((ret = sr_driver_init(process->sr_cntxt, fx2ladw_drv)) != SR_OK) { */
-  /*   printf("Could not initialize driver fx2lafw!\n"); */
-  /*   return -1; */
-  /* } */
-
-  /* // try to initialize a device instance */
-  /* GSList* fx2ladw_dvcs; */
-  /* if((fx2ladw_dvcs = sr_driver_scan(fx2ladw_drv, NULL)) == NULL) { */
-  /*   printf("Could not find any fx2ladw compatible devices\n"); */
-  /*   return -1; */
-  /* } */
-
-  /* process->fx2ladw_dvc_instc = fx2ladw_dvcs->data; */
-
-  /* if ((ret = sr_dev_open(process->fx2ladw_dvc_instc)) != SR_OK) { */
-  /*   printf("Could not open device (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); */
-  /*   return -1; */
-  /* } */
-
-  /* /\* --- Device configuration --- *\/ */
-  /* // TODO currently unused -> remove later if not needed anymore */
-  /* GArray* fx2ladw_scn_opts; */
-  /* // TODO create Macro for this pattern */
-  /* if((fx2ladw_scn_opts = sr_driver_scan_options_list(fx2ladw_drv)) == NULL) { */
-  /*   printf("Invalid arguments?\n"); */
-  /*   return -1; */
-  /* } */
-
-  /*  GArray* fx2ladw_dvc_opts = sr_dev_options(fx2ladw_drv, process->fx2ladw_dvc_instc, NULL); */
-  /* // TODO handle multiple possible instances */
-  /* for(size_t k = 0; k < fx2ladw_dvc_opts->len; k++) { */
-  /*   enum sr_configkey key = g_array_index(fx2ladw_dvc_opts, enum sr_configkey, k); */
-  /*   printf("key: %d\n", key); */
-
-  /*   GVariant* values; */
-  /*   switch (ret = sr_config_list(fx2ladw_drv, process->fx2ladw_dvc_instc, NULL, key, &values)) { */
-  /*     case SR_ERR: { */
-  /*       printf("Something did go wrong (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); */
-  /*       return -1; */
-  /*       break; */
-  /*     } */
-  /*     case SR_ERR_ARG: { */
-  /*       printf("Unable to retrieve config list for key %d. (%s): %s.\n", key, sr_strerror_name(ret), sr_strerror(ret)); */
-  /*       break; */
-  /*     } */
-  /*     case SR_OK: { */
-  /*       printf("Possible values: \n"); */
-  /*       g_print(g_variant_print(values,TRUE)); */
-  /*       printf("\n"); */
-  /*     } */
-  /*     default: */
-  /*       break; */
-  /*   } */
-
-  /*   if(key == SR_CONF_SAMPLERATE) { */
-  /*     guint32 rate = samplerate; */
-  /*     GVariant *data = g_variant_new_uint64 (rate); */
-  /*     if((ret = sr_config_set(process->fx2ladw_dvc_instc, NULL, key, data))) { */
-  /*       printf("Could not set samplerate (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); */
-  /*       return -1; */
-  /*     } */
-
-  /*     printf("successfully set sample rate to %" PRIu32 "\n", samplerate); */
-  /*   } */
-  /* } */
-  /* g_array_free(fx2ladw_dvc_opts, TRUE); */
-
-  // setting up new sigrok session
-  /* if ((ret = sr_session_new(process->sr_cntxt, &(process->sr_session))) != SR_OK) { */
-  /*   printf("Unable to create session (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); */
-  /*   return -1; */
-  /* } */
-
-  /* if ((ret = sr_session_dev_add(process->sr_session, process->fx2ladw_dvc_instc)) != SR_OK) { */
-  /*   printf("Could not add device to instance (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); */
-  /*   return -1; */
-  /* } */
-
-  /* void* data = (void*) process; */
-  /* if ((ret = sr_session_datafeed_callback_add(process->sr_session, &data_feed_callback_efficient, data)) != SR_OK) { */
-  /*   printf("Could not add datafeed callback to instance (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); */
-  /*   return -1; */
-  /* } */
-
-  /* if ((ret = sr_session_stopped_callback_set(process->sr_session, &session_stopped_callback, data)) != SR_OK) { */
-  /*   printf("Could not add stopped callback to instance (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); */
-  /*   return -1; */
-  /* } */
-
-
-  //cleanup
-  /* g_array_free(fx2ladw_scn_opts, TRUE); */
-  /* g_slist_free(fx2ladw_dvcs); */
 
   return 0;
 }
@@ -420,55 +230,153 @@ gboolean tracing_running(tracing_instance_t* process) {
   if (process == NULL)
     return 0;
 
+  /* send_control_command(process->fx2_manager, */
+  /*                      LIBUSB_RECIPIENT_DEVICE | LIBUSB_REQUEST_TYPE_STANDARD | */
+  /*                      LIBUSB_REQUEST_HOST_TO_DEVICE, */
+  /*                      LIBUSB_REQUEST_GET_STATUS, 0, 0, data, 2); */
+
+  
   return process->state == RUNNING;
+
 }
 
-int tracing_init(tracing_instance_t *process, output_module_t *output, GVariant *channel_modes, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
+enum TRACER_VENDOR_COMMANDS {
+  VC_START_SAMP = 0xB2,
+  VC_STOP_SAMP,
+  VC_SET_DELAY,
+  VC_GET_DELAY,
+};
+  
+static int __tracing_send_start_cmd(struct fx2_device_manager *manager_instc) {
+  int ret;
+  if ((ret = send_control_command(
+                                  manager_instc,
+                                  LIBUSB_REQUEST_TYPE_VENDOR,
+                                  VC_START_SAMP, 0x00, 0, NULL, 0)) < 0) {
+    g_error("could not start tracing:");
+    return -1;
+  }
+
+    g_message("send start sampling command to device");
+
+  return 0;
+}
+
+static int __tracing_send_stop_cmd(struct fx2_device_manager *manager_instc) {
+  int ret;
+  if ((ret = send_control_command(
+                                  manager_instc,
+                                  LIBUSB_REQUEST_TYPE_VENDOR,
+                                  VC_STOP_SAMP, 0x00, 0, NULL, 0)) < 0) {
+    g_error("could not start tracing:");
+    return -1;
+  }
+
+    g_message("send start sampling command to device");
+
+  return 0;
+}
+
+
+int tracing_start(tracing_instance_t *process, struct channel_configuration channel_conf) {
+  struct fx2_device_manager *manager = &process->fx2_manager;
+
+  process->chan_conf.conf = channel_conf;
+
+  for (int i = 0; i < sizeof(process->chan_conf.conf_arr); i++) {
+    process->active_channels_mask |= process->chan_conf.conf_arr[i];
+  }
+  
+  fx2_find_devices(manager);
+
+  fx2_open_device(manager);
+  sleep(2);
+
+  fx2_set_packet_callback(manager, &data_feed_callback, (void *) process);
+  
+  GThread *transfer_thread;
+  transfer_thread = g_thread_new("bulk transfer thread", &fx2_transfer_loop_thread_func, (void *)manager);
+  
+  __tracing_send_start_cmd(manager);
+
+  
+  return 0;
+}
+
+
+#define TMP_FIRMWARE_LOCATION "../firmware/bulkloop.bix"
+
+int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
   int ret;
 
-  /* if(process->state == RUNNING) { */
-  /*   g_printf("Instance already running!\n"); */
-  /*   return 1; */
-  /* } */
+  if(process->state == RUNNING) {
+    g_printf("Instance already running!\n");
+    return 1;
+  }
 
-  /* if (tracing_init_sigrok(process, ANALYZER_FREQUENCY) < 0) { */
-  /*   g_printf("Could not initialize sigrok instance!\n"); */
-  /*   return -1; */
-  /* }; */
+  /* // initialize local clock */
+  init_clock(process, ANALYZER_FREQUENCY);
 
-  /* // parse channel_modes to create _active_channel_mask */
-  /* GVariantIter *iter; */
-  /* gint8 length; */
-  /* gint8 channel,mode; */
+  // read firmware
+  char *fname_bix = TMP_FIRMWARE_LOCATION;
 
-  /* g_variant_get(channel_modes, "a(yy)", &iter); */
-  /* length = 0; */
-  /* while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) length++; */
-  /* g_variant_iter_free(iter); */
-  /* process->channels = malloc(length * sizeof(struct channel_mode)); */
-  /* process->channel_count = length; */
-  /* g_variant_get(channel_modes, "a(yy)", &iter); */
+  if (access(fname_bix, R_OK) != 0) {
+    g_error("Could not read file %s", fname_bix);
+    return -1;
+  }
 
-  /* process->active_channels_mask = 0; */
-  /* gint8 k = 0; */
-  /* while(g_variant_iter_loop(iter, "(yy)", &channel, &mode)) { */
-  /*   g_printf("add channel %d with mode %d\n", channel, mode); */
-  /*   process->active_channels_mask += 1<<channel-1; */
-  /*   process->channels[k].channel = channel; */
-  /*   process->channels[k].mode = mode; */
-  /*   k++; */
-  /* } */
+  FILE *f_bix;
+  size_t f_size;
+  f_bix = fopen(fname_bix, "rb");
 
-  /* g_variant_iter_free(iter); */
-  /* g_variant_unref(channel_modes); */
+  // determine size of file
+  fseek(f_bix, 0, SEEK_END);
+  f_size = ftell(f_bix);
+  fseek(f_bix, 0, SEEK_SET);
+
+  unsigned char bix[f_size];
+  fread(bix, sizeof(bix), 1, f_bix);
+
+  /* if(print_bix) */
+    /* pretty_print_memory(bix, 0x0000, sizeof(bix)); */
+
+  // enumerate candidate device
+  struct fx2_device_manager *manager = &process->fx2_manager;
+
+  fx2_init_manager(manager);
+  fx2_find_devices(manager);
+  fx2_open_device(manager);
+
+  unsigned char data[2];
+
+  // check status
+  send_control_command(manager,
+                       LIBUSB_RECIPIENT_DEVICE | LIBUSB_REQUEST_TYPE_STANDARD |
+                           LIBUSB_REQUEST_HOST_TO_DEVICE,
+                       LIBUSB_REQUEST_GET_STATUS, 0, 0, data, 2);
+
+  g_message("Status: %x", data[0] << 4 | data[1]);
+
+  // write firmware to device
+  fx2_cpu_set_reset(manager);
+
+  g_message("uploading firmware");
+
+  fx2_download_firmware(manager, bix, sizeof(bix), 1);
+
+  /* fx2_upload_fw(manager, NULL, 0); */
+  fx2_cpu_unset_reset(manager);
+  sleep(1);
+
+  fx2_close_device(manager);
+  sleep(2);
 
   /* // set queue */
   /* process->timestamp_unref_queue = timestamp_unref_queue; */
   /* process->timestamp_ref_queue = timestamp_ref_queue; */
   /* process->output = output; */
 
-  /* // initialize local clock */
-  /* init_clock(process, ANALYZER_FREQUENCY); */
+
 
   /* /\* if ((ret = sr_session_start(process->sr_session)) != SR_OK) { *\/ */
   /* /\*   printf("Could not start session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); *\/ */
