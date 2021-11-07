@@ -1,4 +1,5 @@
-#include <tracing.h>
+#include <tracing.h> //TODO This will be removed
+#include "tracingp.h"
 #include <fx2.h>
 
 #include <types.h>
@@ -18,8 +19,12 @@
 #include <math.h>
 #include <unistd.h>
 
+GThread *transfer_thread;
+
 #define TICKS_PER_SECOND ((guint64) 1 << 60)
 #define TICKS_PER_NANOSECOND (((guint64) 1 << 60)/1000000000)
+
+/* #define G_LOG_DOMAIN "TRACING" */
 
 guint64 accumulator;
 guint64 seconds;
@@ -29,6 +34,7 @@ void init_clock(tracing_instance_t* process, guint64 frequency) {
   process->local_clock.freq = 0;
   process->local_clock.state = WAIT;
   process->local_clock.free_seq = 0;
+  process->local_clock.free_seq_cont = 0;
   process->local_clock.closed_seq = 0;
 
   process->local_clock.nom_frequency = TICKS_PER_SECOND / frequency;
@@ -61,24 +67,16 @@ void tick(tracing_instance_t *process) {
 
     // open-loop
     clk->free_seq++;
+    clk->free_seq_cont++; // TODO maybe remove again
   }
-  clk->free_seq++;  // TODO REMOVEMOVEMOVMEOMVOEMOVOMEOVE
-
-  // ^
-  // |
-  // |
-  // |
-  // LKASJDLKASJDLKASJD
-  // ALKJSDLKAJSDLKASJLDKJSA
-  //LAKSJDKLAJSDKLASD
 }
 
 void print_free_running_clock_time(tracing_instance_t *process) {
   struct lclock *clk = &(process->local_clock);
 
-  guint64 timestamp_ns = (clk->free_seq * 125);
+  guint64 timestamp_ns = (clk->free_seq_cont * 125);
 
-  g_message("current_time of free running clock: %" G_GUINT64_FORMAT, timestamp_ns);  
+  g_message("current_time of free running clock: %" G_GUINT64_FORMAT, timestamp_ns);
 }
 
 // time reference signal handling
@@ -87,11 +85,9 @@ static void handle_time_ref_signal(tracing_instance_t *process) {
   struct lclock *clk = &(process->local_clock);
   guint64 *ref_time = malloc(sizeof (guint64));
 
-  g_debug("pushing new unreferenced timestamp to queue");
   g_async_queue_push(process->timestamp_unref_queue, ref_time);
 
   // read data from process
-  g_debug("reading referenced timestamp from queue");
   ref_time = g_async_queue_pop(process->timestamp_ref_queue);
 
   if (ref_time > 0) { // 0 -> invalid time ref
@@ -151,7 +147,7 @@ default:
       break;
     }
   } else {
-    g_debug("Discarded reference signal. Transceiver took to long to answer! \n");
+    /* g_debug("Discarded reference signal. Transceiver took to long to answer! \n"); */
   }
   free(ref_time);
 }
@@ -167,7 +163,7 @@ static inline void handle_gpio_signal(tracing_instance_t *process, guint8 state,
     /* trace.timestamp_ns = (1000000000 * seconds + 1e9 * (double)accumulator/TICKS_PER_SECOND); */
     trace.timestamp_ns = (1000000000 * seconds + (accumulator/TICKS_PER_NANOSECOND));
 
-    g_debug("writing trace to file");
+    /* g_debug("writing trace to file"); */
     // print trace using output module write function
     (*process->output->write)(process->output, &trace);
   }
@@ -183,20 +179,20 @@ void data_feed_callback(uint8_t *packet_data, int length, void *user_data) {
     initial_df_logic_packet = FALSE;
   }
 
-  for(size_t i = 0; i < length; i++) {
+  for(int i = 0; i < length; i++) {
     guint8 curr = packet_data[i];
-    
+
     if(curr != last) {
       guint8 changed = (last^curr) & process->active_channels_mask;
       guint8 state;
 
       if(changed) {
         for (size_t k = 0; k < sizeof(process->chan_conf.conf_arr); k++) {
-          guint8 channel_mask = 1 << (k-1);
+          guint8 channel_mask = 1 << k;
           guint8 mode = process->chan_conf.conf_arr[k];
 
-          if(changed & channel_mask && process->chan_conf.conf_arr[k] != SAMPLE_NONE) {
-            if(G_UNLIKELY(process->chan_conf.conf_arr[k]==SAMPLE_RADIO) && (curr & channel_mask)) { // only match rising flank
+          if((changed & channel_mask) && mode != SAMPLE_NONE) {
+            if(G_UNLIKELY(mode==SAMPLE_RADIO) && (curr & channel_mask)) { // only match rising flank
               #ifdef WITH_TIMESYNC
               handle_time_ref_signal(process);
               #endif
@@ -221,6 +217,8 @@ void data_feed_callback(uint8_t *packet_data, int length, void *user_data) {
 int tracing_stop(tracing_instance_t *process) {
   int ret;
 
+  __tracing_send_stop_cmd(&process->fx2_manager);
+
   process->state = STOPPED;
 
   return 0;
@@ -235,19 +233,12 @@ gboolean tracing_running(tracing_instance_t* process) {
   /*                      LIBUSB_REQUEST_HOST_TO_DEVICE, */
   /*                      LIBUSB_REQUEST_GET_STATUS, 0, 0, data, 2); */
 
-  
+
   return process->state == RUNNING;
 
 }
 
-enum TRACER_VENDOR_COMMANDS {
-  VC_START_SAMP = 0xB2,
-  VC_STOP_SAMP,
-  VC_SET_DELAY,
-  VC_GET_DELAY,
-};
-  
-static int __tracing_send_start_cmd(struct fx2_device_manager *manager_instc) {
+int __tracing_send_start_cmd(struct fx2_device_manager *manager_instc) {
   int ret;
   if ((ret = send_control_command(
                                   manager_instc,
@@ -262,8 +253,10 @@ static int __tracing_send_start_cmd(struct fx2_device_manager *manager_instc) {
   return 0;
 }
 
-static int __tracing_send_stop_cmd(struct fx2_device_manager *manager_instc) {
+int __tracing_send_stop_cmd(struct fx2_device_manager *manager_instc) {
   int ret;
+  g_message("send stop sampling command to device");
+
   if ((ret = send_control_command(
                                   manager_instc,
                                   LIBUSB_REQUEST_TYPE_VENDOR,
@@ -271,8 +264,6 @@ static int __tracing_send_stop_cmd(struct fx2_device_manager *manager_instc) {
     g_error("could not start tracing:");
     return -1;
   }
-
-    g_message("send start sampling command to device");
 
   return 0;
 }
@@ -283,28 +274,29 @@ int tracing_start(tracing_instance_t *process, struct channel_configuration chan
 
   process->chan_conf.conf = channel_conf;
 
-  for (int i = 0; i < sizeof(process->chan_conf.conf_arr); i++) {
-    process->active_channels_mask |= process->chan_conf.conf_arr[i];
+  for (int k = 0; k < sizeof(process->chan_conf.conf_arr); k++) {
+    if(process->chan_conf.conf_arr[k] != SAMPLE_NONE){
+      process->active_channels_mask |= 1 << k;
+    }
   }
-  
+
   fx2_find_devices(manager);
 
   fx2_open_device(manager);
   sleep(2);
 
   fx2_set_packet_callback(manager, &data_feed_callback, (void *) process);
-  
-  GThread *transfer_thread;
+
   transfer_thread = g_thread_new("bulk transfer thread", &fx2_transfer_loop_thread_func, (void *)manager);
-  
+
   __tracing_send_start_cmd(manager);
 
-  
+
   return 0;
 }
 
 
-#define TMP_FIRMWARE_LOCATION "../firmware/bulkloop.bix"
+#define TMP_FIRMWARE_LOCATION "../firmware/build/bulkloop.bix"
 
 int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
   int ret;
@@ -372,9 +364,9 @@ int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQue
   sleep(2);
 
   /* // set queue */
-  /* process->timestamp_unref_queue = timestamp_unref_queue; */
-  /* process->timestamp_ref_queue = timestamp_ref_queue; */
-  /* process->output = output; */
+  process->timestamp_unref_queue = timestamp_unref_queue;
+  process->timestamp_ref_queue = timestamp_ref_queue;
+  process->output = output;
 
 
 

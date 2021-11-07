@@ -2,6 +2,6 @@
 #define CONFIGURATION_H
 
 #define RECEIVER_CHANNEL 8
-#define G_LOG_DOMAIN "GPIOTD"
+/* #define G_LOG_DOMAIN "GPIOTD" */
 
 #endif /* CONFIGURATION_H */

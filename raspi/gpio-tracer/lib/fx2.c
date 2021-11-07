@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
+/* #define G_LOG_DOMAIN "FX2" */
+
 struct fx2_usb_device {
   int vendorID;
   int productID;
@@ -11,7 +13,7 @@ struct fx2_usb_device {
 } candidate_devices[] = {
     {0x0925, 0x3881, "Vendor-Specific Device"},
     {0x1991, 0x0111, "FX2 Logic Analyzer"},
-    {0x04b4, 0x8613, "Cypress Semiconductor Vendor-Specific Device"},    
+    {0x04b4, 0x8613, "Cypress Semiconductor Vendor-Specific Device"},
     {0x0000, 0x0000, NULL},
 };
 
@@ -376,9 +378,9 @@ void transfer_callback(struct libusb_transfer *transfer) {
   /* g_message("Transfer finished with: %d", transfer->status); */
 
   if (transfer->status == 0) {
-    if(!(cnt++ % 1000)) {
-      g_message("Transfer %zu finished with %d bytes", user_data->transfer_num, transfer->actual_length);      
-    }
+    /* if(!(cnt++ % 1000)) { */
+    /*   g_message("Transfer %zu finished with %d bytes", user_data->transfer_num, transfer->actual_length); */
+    /* } */
   } else {
     g_message("Transfer failed with status code: %d", transfer->status);
     return;
@@ -394,11 +396,11 @@ void transfer_callback(struct libusb_transfer *transfer) {
 
 void* fx2_transfer_loop_thread_func(void *thread_data) {
   struct fx2_device_manager *manager_instc = (struct fx2_device_manager*) thread_data;
-  #define MAX_BYTES 512
-  #define TRANSFERS 1000
-  /* unsigned char **data = malloc(TRANSFERS * MAX_BYTES * sizeof(unsigned char)); */
-  unsigned char data[TRANSFERS][MAX_BYTES];
-  struct libusb_transfer **transfers = malloc(TRANSFERS * sizeof(struct libusb_transfer*));
+#define MAX_BYTES (1 << 17)
+#define TRANSFERS 20
+
+  unsigned char *(data[TRANSFERS]);
+  struct libusb_transfer *(transfers[TRANSFERS]);
   struct transfer_data *user_data = malloc(TRANSFERS * sizeof(struct transfer_data));
 
   g_message("sampling thread started");
@@ -410,13 +412,16 @@ void* fx2_transfer_loop_thread_func(void *thread_data) {
   // 5. Deallocate resources
 
   for (size_t i = 0; i < TRANSFERS; ++i) {
+    // allocate memory
+    data[i] = malloc(MAX_BYTES*sizeof(unsigned char));
+
     transfers[i] = libusb_alloc_transfer(0);
     user_data[i].continue_sampling = 0x01;
     user_data[i].transfer_num = i;
     user_data[i].callback = manager_instc->packet_handler_cb;
     // TODO this is not nice. User data for the user configured transfer callback is saved in two different structs
     user_data[i].cb_user_data = manager_instc->transfer_cb_user_data;
-    libusb_fill_bulk_transfer(transfers[i], manager_instc->fx2_dev_handl, 0x82, data[i], MAX_BYTES, &transfer_callback, (void *)&(user_data[i]), 2000);
+    libusb_fill_bulk_transfer(transfers[i], manager_instc->fx2_dev_handl, 0x82, data[i], MAX_BYTES * sizeof(unsigned char), &transfer_callback, (void *)&(user_data[i]), 2000);
   }
 
   for (size_t i = 0; i < TRANSFERS; ++i) {
@@ -427,11 +432,11 @@ void* fx2_transfer_loop_thread_func(void *thread_data) {
     libusb_handle_events(manager_instc->libusb_cntxt);
   }
 
+
   for (size_t i = 0; i < TRANSFERS; ++i) {
     libusb_free_transfer(transfers[i]);
+    free(data[i]);
   }
-
-  free(transfers);
   free(user_data);
 }
 

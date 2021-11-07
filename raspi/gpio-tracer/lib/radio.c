@@ -14,6 +14,7 @@ static guint8 _running = 0;
 static GAsyncQueue *_timestamp_ref_queue; // return queue for reference timestamps
 static GAsyncQueue *_timestamp_unref_queue; // process incoming gpio signals captured by the logic analyzer
 
+/* #define G_LOG_DOMAIN "RADIO" */
 
 static gpointer radio_thread_func(gpointer data) {
   static guint8 no_signal_cnt = 0;

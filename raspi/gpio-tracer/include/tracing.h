@@ -27,6 +27,14 @@ enum channel_state {
   SAMPLE_RADIO = 4
 };
 
+enum TRACER_VENDOR_COMMANDS {
+  VC_EPSTAT = 0xB1,
+  VC_START_SAMP = 0xB2,
+  VC_STOP_SAMP,
+  VC_SET_DELAY,
+  VC_GET_DELAY,
+};
+
 struct channel_configuration {
     enum channel_state ch1;
     enum channel_state ch2;
@@ -59,6 +67,7 @@ struct lclock {
   guint64 closed_seq;
   guint64 prev_time;
 
+  guint64 free_seq_cont;
   guint64 free_seq;
 
   gint64 res_error;

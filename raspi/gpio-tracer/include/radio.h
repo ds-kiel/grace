@@ -7,7 +7,7 @@
 
 GAsyncQueue *reference_timestamp_queue;
 
-int radio_init();
+int radio_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue);
 int radio_deinit();
 void radio_start_reception();
 

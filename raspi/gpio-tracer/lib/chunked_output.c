@@ -17,6 +17,9 @@
 #include <sys/mman.h>
 #include <inttypes.h>
 
+
+/* #define G_LOG_DOMAIN "OUTPUT" */
+
 /* typedef size_t jobid; */
 
 typedef struct chunked_output {
@@ -50,12 +53,12 @@ int chunked_output_deinit(chunked_output_t *output) {
 
   // truncate last file
   if ((fd = open(last_file, O_RDWR | O_CREAT, S_IRWXU)) < 0) {
-    g_printf("could not acquire next chunk\n");
+    g_message("could not acquire next chunk");
     return -1;
   }
 
   if ((ret = ftruncate(fd, output->traces_written*TRACE_SIZE)) < 0) {
-    g_printf("Could not truncate file to required size of %d!\n", CHUNK_SIZE);
+    g_message("Could not truncate file to required size of %d!", CHUNK_SIZE);
     return -1;
   }
 
@@ -76,26 +79,26 @@ int acquire_next_chunk(chunked_output_t *output) {
   target_file = g_strdup_printf("%s/traces-%zu", output->data_path, output->chunk_cnt);
 
   if ((fd = open(target_file, O_RDWR | O_CREAT, S_IRWXU)) < 0) {
-    g_printf("could not acquire next chunk\n");
+    g_message("could not acquire next chunk");
     return -1;
   }
 
   output->traces_file_size = CHUNK_SIZE * TRACE_SIZE;
   if ((ret = ftruncate(fd, output->traces_file_size)) < 0) {
-    g_printf("Could not truncate file to required size of %d!\n", CHUNK_SIZE);
+    g_message("Could not truncate file to required size of %d!", CHUNK_SIZE);
     return -1;
   }
 
   if ((output->traces_mmap = mmap(NULL, output->traces_file_size, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_SHARED,
                                   fd, 0)) == MAP_FAILED) {
-    g_printf("Could not mmap file into memory!\n");
+    g_message("Could not mmap file into memory!");
     return -1;
   }
 
-  g_printf("Got memory mapped region at address %p\n", output->traces_mmap);
+  g_message("Got memory mapped region at address %p", output->traces_mmap);
 
   if (close(fd)) {
-    g_printf("Could not close file\n");
+    g_message("Could not close file");
     return -1;
   }
 
@@ -119,13 +122,13 @@ static void chunked_output_write(chunked_output_t *output, struct trace *sample)
 
   memcpy(output->curr_trace, &sample->timestamp_ns, sizeof(sample->timestamp_ns));
   output->curr_trace = output->curr_trace + sizeof(sample->timestamp_ns);
-  g_message("sizeof(sample->timestamp_ns) %d", sizeof(sample->timestamp_ns));
+  g_message("sizeof(sample->timestamp_ns) %lu", sizeof(sample->timestamp_ns));
 
   output->traces_written++;
 
   if (G_UNLIKELY(output->traces_written > CHUNK_SIZE)) {
     if(acquire_next_chunk(output) < 0) {
-      g_printf("Could not acquire next memory chunk at count %z\n!", output->chunk_cnt);
+      g_message("Could not acquire next memory chunk at count %z!", output->chunk_cnt);
     }
   }
 }
@@ -135,19 +138,19 @@ int chunked_output_init(chunked_output_t *output, const gchar* data_path) {
   int ret;
   size_t len;
 
-  g_printf("Initializing chunked output module!\n");
+  g_message("Initializing chunked output module!");
 
   output->chunk_cnt = 0;
   /* output->id = 0; // for now just 1 */
 
-  len = sizeof(gchar)*strlen(data_path) + 1;
-  output->data_path = malloc(len);
+  len = strlen(data_path) + 1;
+  output->data_path = malloc(sizeof(gchar)*len);
   memcpy(output->data_path, data_path, len);
 
   output->write = (output_write_function)chunked_output_write;
 
   if ((ret = acquire_next_chunk(output)) < 0) {
-    g_printf("Could not create initial chunk %s\n");
+    g_message("Could not create initial chunk");
     return -1;
   }
 
