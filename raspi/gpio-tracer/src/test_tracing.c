@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
   radio_start_reception();
 #endif
 
-  sleep(10);
+  sleep(1);
 
   print_free_running_clock_time(tracing_task);
 

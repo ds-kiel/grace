@@ -56,7 +56,7 @@ static const gchar introspection_xml[] =
   "</node>";
 
 
-static int start_tasks(GVariant* channel_modes) {
+static int start_tasks(struct channel_configuration chan_conf) {
   int ret;
   struct stat st = {0};
 
@@ -88,13 +88,15 @@ static int start_tasks(GVariant* channel_modes) {
     return -1;
   }
 
-  if ((ret = tracing_init(tracing_task, (output_module_t*) chunked_output, channel_modes, _timestamp_unref_queue, _timestamp_ref_queue))) {
+  if ((ret = tracing_init(tracing_task, (output_module_t*) chunked_output, _timestamp_unref_queue, _timestamp_ref_queue))) {
     #ifdef WITH_TIMESYNC
     radio_deinit();
     #endif
     chunked_output_deinit(chunked_output);
     return -1;
   }
+
+  tracing_start(tracing_task, chan_conf);
 
   // start thread
   #ifdef WITH_TIMESYNC
@@ -105,10 +107,12 @@ static int start_tasks(GVariant* channel_modes) {
 }
 
 static int stop_tasks() {
+  tracing_stop(tracing_task);
+
   #ifdef WITH_TIMESYNC
   radio_deinit();
   #endif
-  tracing_stop_instance(tracing_task);
+
   chunked_output_deinit(chunked_output);
 
   g_async_queue_unref(_trace_queue          );
@@ -137,22 +141,14 @@ static void handle_method_call(GDBusConnection *connnection,
     g_variant_get(parameters, "(&s)", &trace_path);
     g_printf("Parameters: %s\n", trace_path);
 
-    GVariantBuilder* channel_modes_builder = g_variant_builder_new(G_VARIANT_TYPE("a(yy)"));
-    GVariant* channel_modes;
-    g_variant_builder_add(channel_modes_builder, "(yy)", 1, MATCH_FALLING | MATCH_RISING);
-    g_variant_builder_add(channel_modes_builder, "(yy)", 2, MATCH_FALLING | MATCH_RISING);
-    g_variant_builder_add(channel_modes_builder, "(yy)", 3, MATCH_FALLING | MATCH_RISING);
-    g_variant_builder_add(channel_modes_builder, "(yy)", 4, MATCH_FALLING | MATCH_RISING);
-    g_variant_builder_add(channel_modes_builder, "(yy)", 5, MATCH_FALLING | MATCH_RISING);
-    g_variant_builder_add(channel_modes_builder, "(yy)", 6, MATCH_FALLING | MATCH_RISING);
-    g_variant_builder_add(channel_modes_builder, "(yy)", 7, MATCH_FALLING | MATCH_RISING);
-    g_variant_builder_add(channel_modes_builder, "(yy)", 8, MATCH_FALLING | MATCH_RISING);
+    struct channel_configuration chan_conf = {
+      .ch1 = SAMPLE_ALL,
+      .ch2 = SAMPLE_ALL,
+      .ch3 = SAMPLE_ALL,
+      .ch8 = SAMPLE_RADIO,
+    };
 
-    channel_modes = g_variant_new("a(yy)", channel_modes_builder);
-    g_variant_builder_unref(channel_modes_builder);
-
-    g_print(g_variant_print(channel_modes,TRUE));
-    if ((ret = start_tasks(channel_modes)) < 0) {
+    if ((ret = start_tasks(chan_conf)) < 0) {
       result = g_strdup_printf("unable to start instance");
     } else if (ret > 0) {
       result = g_strdup_printf("instance already running");
@@ -249,7 +245,6 @@ int main(int argc, char *argv[])
   flags = G_BUS_NAME_OWNER_FLAGS_REPLACE | G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT;
   owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.cau.gpiot", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL); // needed if run as a dbus service
   /* owner_id = g_bus_own_name(G_BUS_TYPE_SESSION, "org.cau.gpiot", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL);   */
-  g_printf("Setup gpio pin for gps flooding!\n");
 
   while (1) { // TODO main loop
     g_main_context_iteration(main_context, TRUE);

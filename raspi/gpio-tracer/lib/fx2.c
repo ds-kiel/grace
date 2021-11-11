@@ -54,6 +54,16 @@ int fx2_init_manager(struct fx2_device_manager *manager_instc) {
     return -1;
   }
 
+  manager_instc->event_handler_thread = g_thread_new("bulk transfer thread", &fx2_transfer_main_loop, (void *)manager_instc);
+
+  return 0;
+}
+
+int fx2_deinit_manager(struct fx2_device_manager *manager_instc) {
+  // TODO
+  // deinit libusb cntxt
+  // stop event handling thread
+  // ...
   return 0;
 }
 
@@ -358,102 +368,122 @@ int fx2_download_firmware(struct fx2_device_manager *manager_instc,
   return 0;
 }
 
-int fx2_set_packet_callback(struct fx2_device_manager *manager_instc, fx2_packet_callback_fn packet_handler, void *user_data) {
-  manager_instc->packet_handler_cb = packet_handler;
-  manager_instc->transfer_cb_user_data = user_data; // TODO this is not really nice...
-
-  return 0;
-}
-
-struct transfer_data {
-  uint8_t continue_sampling;
-  size_t  transfer_num;
-  fx2_packet_callback_fn callback;
-  void *cb_user_data;
-};
-
-void transfer_callback(struct libusb_transfer *transfer) {
-  static cnt = 0;
+void __transfer_callback(struct libusb_transfer *transfer) {
   struct transfer_data *user_data = transfer->user_data;
   /* g_message("Transfer finished with: %d", transfer->status); */
 
   if (transfer->status == 0) {
-    /* if(!(cnt++ % 1000)) { */
-    /*   g_message("Transfer %zu finished with %d bytes", user_data->transfer_num, transfer->actual_length); */
-    /* } */
+    (*(user_data->callback))(transfer->buffer, transfer->actual_length, user_data->cb_user_data);
+
+    libusb_submit_transfer(transfer);
   } else {
     g_message("Transfer failed with status code: %d", transfer->status);
-    return;
-  }
-
-  (*(user_data->callback))(transfer->buffer, transfer->actual_length, user_data->cb_user_data);
-
-  if(user_data->continue_sampling == 0x01) {
-    libusb_submit_transfer(transfer);
+    user_data->transfer_finished = 1;
   }
 }
 
 
-void* fx2_transfer_loop_thread_func(void *thread_data) {
+void* fx2_transfer_main_loop(void *thread_data) {
   struct fx2_device_manager *manager_instc = (struct fx2_device_manager*) thread_data;
-#define MAX_BYTES (1 << 17)
-#define TRANSFERS 20
 
-  unsigned char *(data[TRANSFERS]);
-  struct libusb_transfer *(transfers[TRANSFERS]);
-  struct transfer_data *user_data = malloc(TRANSFERS * sizeof(struct transfer_data));
+  while (1) {
+    libusb_handle_events(manager_instc->libusb_cntxt);
+  }
 
-  g_message("sampling thread started");
+}
+
+
+int fx2_set_bulk_transfer_packet_callback(struct fx2_bulk_transfer_config *transfer_cnfg, fx2_packet_callback_fn packet_handler, void *user_data) {
+  for (size_t i = 0; i < transfer_cnfg->transfer_num; ++i) {
+    transfer_cnfg->user_data[i].callback = packet_handler;
+    transfer_cnfg->user_data[i].cb_user_data = user_data;
+  }
+
+  return 0;
+}
+
+
+int fx2_create_bulk_transfer(struct fx2_device_manager *manager_instc,
+                           struct fx2_bulk_transfer_config *transfer_cnfg,
+                           size_t transfer_num,
+                           size_t transfer_size) {
+  transfer_cnfg->transfer_buffers = malloc(transfer_num * sizeof(unsigned char*));
+  transfer_cnfg->transfers = malloc(transfer_num * sizeof(struct libusb_transfer*));
+  transfer_cnfg->user_data = malloc(transfer_num * sizeof(struct transfer_data));
+
+  transfer_cnfg->transfer_num = transfer_num;
+  transfer_cnfg->transfer_size = transfer_size;
 
   // 1. Allocate transfers
   // 2. Fill transfers with transfer information
   // 3. submit transfers
   // 4. Examine transfer structure from callback
   // 5. Deallocate resources
-
-  for (size_t i = 0; i < TRANSFERS; ++i) {
+  for (size_t i = 0; i < transfer_num; ++i) {
     // allocate memory
-    data[i] = malloc(MAX_BYTES*sizeof(unsigned char));
+    transfer_cnfg->transfer_buffers[i] = malloc(transfer_size*sizeof(unsigned char));
 
-    transfers[i] = libusb_alloc_transfer(0);
-    user_data[i].continue_sampling = 0x01;
-    user_data[i].transfer_num = i;
-    user_data[i].callback = manager_instc->packet_handler_cb;
-    // TODO this is not nice. User data for the user configured transfer callback is saved in two different structs
-    user_data[i].cb_user_data = manager_instc->transfer_cb_user_data;
-    libusb_fill_bulk_transfer(transfers[i], manager_instc->fx2_dev_handl, 0x82, data[i], MAX_BYTES * sizeof(unsigned char), &transfer_callback, (void *)&(user_data[i]), 2000);
+    transfer_cnfg->transfers[i] = libusb_alloc_transfer(0);
+    transfer_cnfg->user_data[i].transfer_finished = 0;
+    transfer_cnfg->user_data[i].transfer_num = i;
+    libusb_fill_bulk_transfer(
+        transfer_cnfg->transfers[i], manager_instc->fx2_dev_handl, 0x82,
+        transfer_cnfg->transfer_buffers[i],
+        transfer_size * sizeof(unsigned char), &__transfer_callback,
+        (void *)&(transfer_cnfg->user_data[i]), 2000); // timeout currently hardcoded to two seconds.
   }
 
-  for (size_t i = 0; i < TRANSFERS; ++i) {
-    libusb_submit_transfer(transfers[i]);
-  }
-
-  while (1) {
-    libusb_handle_events(manager_instc->libusb_cntxt);
-  }
-
-
-  for (size_t i = 0; i < TRANSFERS; ++i) {
-    libusb_free_transfer(transfers[i]);
-    free(data[i]);
-  }
-  free(user_data);
+  return 0;
 }
 
-int fx2_submit_bulk_transfer(struct fx2_device_manager *manager_instc) {
-  static unsigned char data[MAX_BYTES];
-  int trans, ret;
-  static int cnt = 0;
-
-  if ((ret = libusb_bulk_transfer(manager_instc->fx2_dev_handl, 0x82, data, MAX_BYTES, &trans, 0)) < 0) {
-    g_message("libusb_bulk_transfer -> %s", libusb_error_name(ret));
+int fx2_submit_bulk_transfer(struct fx2_bulk_transfer_config *transfer_cnfg) {
+  for (size_t i = 0; i < transfer_cnfg->transfer_num; ++i) {
+    libusb_submit_transfer(transfer_cnfg->transfers[i]);
   }
 
+  return 0;
+}
 
-  if (! (++cnt % 100)) {
-    printf("Got %d bytes \n", trans);
-    cnt = 0;
+int __fx2_check_transfers_canceled(struct fx2_bulk_transfer_config *transfer_cnfg) {
+  for (size_t i = 0; i < transfer_cnfg->transfer_num; ++i) {
+    libusb_cancel_transfer(transfer_cnfg->transfers[i]);
   }
+
+  uint8_t all_finished = 0;
+  while (!all_finished) {
+    all_finished = 1;
+    for (size_t i = 0; i < transfer_cnfg->transfer_num; ++i) {
+      if(transfer_cnfg->user_data[i].transfer_finished==0) {
+        all_finished = 0;
+      }
+    }
+  }
+
+  g_message("Canceled all pending transfers");
+
+  return 0;
+}
+
+int fx2_free_bulk_transfer(struct fx2_bulk_transfer_config *transfer_cnfg) {
+  for (size_t i = 0; i < transfer_cnfg->transfer_num; ++i) {
+    libusb_cancel_transfer(transfer_cnfg->transfers[i]);
+  }
+
+  // blocks until all transfers have finished
+  __fx2_check_transfers_canceled(transfer_cnfg);
+
+  // free inner allocations
+  for (size_t i = 0; i < transfer_cnfg->transfer_num; ++i) {
+    libusb_free_transfer(transfer_cnfg->transfers[i]);
+    free(transfer_cnfg->transfer_buffers[i]);
+  }
+
+  // free outer allocations
+  free(transfer_cnfg->user_data);
+  free(transfer_cnfg->transfers);
+  free(transfer_cnfg->transfer_buffers);
+
+  g_message("Successfully freed resources");
 
   return 0;
 }

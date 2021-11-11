@@ -25,10 +25,13 @@ static gpointer radio_thread_func(gpointer data) {
     int bytes_avail;
     guint64 *ref_time = NULL;
 
-    /* ref_time = g_async_queue_timeout_pop(_timestamp_unref_queue, 2e6); */
-    ref_time = g_async_queue_pop(_timestamp_unref_queue);
+    ref_time = g_async_queue_timeout_pop(_timestamp_unref_queue, 2e6);
+    /* ref_time = g_async_queue_pop(_timestamp_unref_queue); */
     g_message("pop unreferenced timestamp from queue");
     g_usleep(1000);
+
+    if (_running==0)
+      break;
 
     // Timeout -> check wether transceiver is in correct state
     if(ref_time == NULL) {

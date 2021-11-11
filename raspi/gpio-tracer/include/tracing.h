@@ -91,6 +91,7 @@ typedef struct tracing_instance {
   output_module_t *output;
 
   struct fx2_device_manager fx2_manager;
+  struct fx2_bulk_transfer_config transfer_cnfg;
 
   struct lclock local_clock;
 } tracing_instance_t;

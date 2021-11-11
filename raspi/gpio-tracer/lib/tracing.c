@@ -19,8 +19,6 @@
 #include <math.h>
 #include <unistd.h>
 
-GThread *transfer_thread;
-
 #define TICKS_PER_SECOND ((guint64) 1 << 60)
 #define TICKS_PER_NANOSECOND (((guint64) 1 << 60)/1000000000)
 
@@ -219,6 +217,10 @@ int tracing_stop(tracing_instance_t *process) {
 
   __tracing_send_stop_cmd(&process->fx2_manager);
 
+  fx2_free_bulk_transfer(&process->transfer_cnfg);
+
+  fx2_close_device(&process->fx2_manager);
+
   process->state = STOPPED;
 
   return 0;
@@ -261,7 +263,7 @@ int __tracing_send_stop_cmd(struct fx2_device_manager *manager_instc) {
                                   manager_instc,
                                   LIBUSB_REQUEST_TYPE_VENDOR,
                                   VC_STOP_SAMP, 0x00, 0, NULL, 0)) < 0) {
-    g_error("could not start tracing:");
+    g_error("could not stop tracing:");
     return -1;
   }
 
@@ -271,6 +273,7 @@ int __tracing_send_stop_cmd(struct fx2_device_manager *manager_instc) {
 
 int tracing_start(tracing_instance_t *process, struct channel_configuration channel_conf) {
   struct fx2_device_manager *manager = &process->fx2_manager;
+  struct fx2_bulk_transfer_config *transfer_cnfg = &process->transfer_cnfg;
 
   process->chan_conf.conf = channel_conf;
 
@@ -285,12 +288,13 @@ int tracing_start(tracing_instance_t *process, struct channel_configuration chan
   fx2_open_device(manager);
   sleep(2);
 
-  fx2_set_packet_callback(manager, &data_feed_callback, (void *) process);
+  fx2_create_bulk_transfer(manager, transfer_cnfg, 20, (1 << 17));
 
-  transfer_thread = g_thread_new("bulk transfer thread", &fx2_transfer_loop_thread_func, (void *)manager);
+  fx2_set_bulk_transfer_packet_callback(transfer_cnfg, &data_feed_callback, (void *) process);
+
+  fx2_submit_bulk_transfer(transfer_cnfg);
 
   __tracing_send_start_cmd(manager);
-
 
   return 0;
 }
@@ -368,14 +372,7 @@ int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQue
   process->timestamp_ref_queue = timestamp_ref_queue;
   process->output = output;
 
-
-
-  /* /\* if ((ret = sr_session_start(process->sr_session)) != SR_OK) { *\/ */
-  /* /\*   printf("Could not start session  (%s): %s.\n", sr_strerror_name(ret), sr_strerror(ret)); *\/ */
-  /* /\*   return -1; *\/ */
-  /* /\* } *\/ */
-
-  /* process->state = RUNNING; */
+  process->state = RUNNING;
 
   return 0;
 }
