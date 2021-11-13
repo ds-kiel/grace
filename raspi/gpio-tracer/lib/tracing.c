@@ -1,5 +1,4 @@
-#include <tracing.h> //TODO This will be removed
-#include "tracingp.h"
+#include <tracing.h>
 #include <fx2.h>
 
 #include <types.h>
@@ -21,6 +20,14 @@
 
 #define TICKS_PER_SECOND ((guint64) 1 << 60)
 #define TICKS_PER_NANOSECOND (((guint64) 1 << 60)/1000000000)
+
+#define NEW_ESTIMATE_WEIGHT 0.5
+
+
+int __tracing_fw_send_start_cmd(struct fx2_device_manager *manager_instc);
+int __tracing_fw_send_stop_cmd(struct fx2_device_manager *manager_instc);
+int __tracing_fw_hand_off_ctrl(struct fx2_device_manager *manager_instc);
+int __tracing_fw_stat(struct fx2_device_manager *manager_instc);
 
 /* #define G_LOG_DOMAIN "TRACING" */
 
@@ -81,26 +88,28 @@ void print_free_running_clock_time(tracing_instance_t *process) {
 #ifdef WITH_TIMESYNC
 static void handle_time_ref_signal(tracing_instance_t *process) {
   struct lclock *clk = &(process->local_clock);
-  guint64 *ref_time = malloc(sizeof (guint64));
+  guint64 ref_time;
 
-  g_async_queue_push(process->timestamp_unref_queue, ref_time);
+  /* g_async_queue_push(process->timestamp_unref_queue, ref_time); */
 
   // read data from process
-  ref_time = g_async_queue_pop(process->timestamp_ref_queue);
+  /* ref_time = g_async_queue_pop(process->timestamp_ref_queue); */
+
+  ref_time = radio_retrieve_timestamp();
 
   if (ref_time > 0) { // 0 -> invalid time ref
     guint64 time_since_last;
 
     switch (clk->state) {
     case WAIT: {
-      clk->prev_time = *ref_time;
-      seconds = (*ref_time);
+      clk->prev_time = ref_time;
+      seconds = ref_time;
 
       clk->state = OFFSET;
       break;
     }
     case OFFSET: {
-      time_since_last = *ref_time - clk->prev_time;
+      time_since_last = ref_time - clk->prev_time;
       clk->adjusted_frequency = clk->nom_frequency*(((double)time_since_last*clk->nom_freq)/clk->free_seq);
 
       clk->state = FREQ;
@@ -109,29 +118,29 @@ static void handle_time_ref_signal(tracing_instance_t *process) {
     }
     case FREQ: { // Main case. reached after two reference signals are received.
       frequency_error:
-      time_since_last = *ref_time - clk->prev_time;
-      clk->adjusted_frequency = 0.3*clk->adjusted_frequency +  0.7 * clk->nom_frequency*(((double)time_since_last*clk->nom_freq)/clk->free_seq);
+      time_since_last = ref_time - clk->prev_time;
+      clk->adjusted_frequency = (1.0-NEW_ESTIMATE_WEIGHT)*clk->adjusted_frequency +  NEW_ESTIMATE_WEIGHT * clk->nom_frequency*(((double)time_since_last*clk->nom_freq)/clk->free_seq);
 
       /* other variant*/
       phase_error:
       // assumption clock is never off more than one second
-      if (seconds == *ref_time-1) {
+      if (seconds == ref_time-1) {
         clk->offset = (TICKS_PER_SECOND - accumulator);
         clk->res_error = clk->offset;
         clk->offset *= -1;
-      } else if (seconds == *ref_time) {
+      } else if (seconds == ref_time) {
         clk->offset = accumulator;
         clk->res_error = clk->offset;
       } else { // offset too large
         // implement me
         g_message("Offset too large this should not happen!");
         g_message("local seconds %" G_GUINT64_FORMAT, seconds);
-        g_message("reference seconds %" G_GUINT64_FORMAT, *ref_time);
+        g_message("reference seconds %" G_GUINT64_FORMAT, ref_time);
       }
 
       clk->offset_adj = clk->offset / (clk->nom_freq);
       clk->free_seq = 0;
-      clk->prev_time = *ref_time;
+      clk->prev_time = ref_time;
 
       g_message("offset %" G_GINT64_FORMAT, clk->offset);
       g_message("offset_adj %" G_GINT64_FORMAT, clk->offset_adj);
@@ -147,7 +156,7 @@ default:
   } else {
     /* g_debug("Discarded reference signal. Transceiver took to long to answer! \n"); */
   }
-  free(ref_time);
+  /* free(ref_time); */
 }
 #endif
 
@@ -190,11 +199,11 @@ void data_feed_callback(uint8_t *packet_data, int length, void *user_data) {
           guint8 mode = process->chan_conf.conf_arr[k];
 
           if((changed & channel_mask) && mode != SAMPLE_NONE) {
-            if(G_UNLIKELY(mode==SAMPLE_RADIO) && (curr & channel_mask)) { // only match rising flank
-              #ifdef WITH_TIMESYNC
+#ifdef WITH_TIMESYNC
+            if(G_UNLIKELY(mode & SAMPLE_RADIO) && (curr & channel_mask)) { // only match rising flank
               handle_time_ref_signal(process);
-              #endif
             }
+#endif
 
             if((mode & SAMPLE_FALLING) && (last & channel_mask)) { // falling signal
               state = 0;
@@ -212,20 +221,6 @@ void data_feed_callback(uint8_t *packet_data, int length, void *user_data) {
   }
 }
 
-int tracing_stop(tracing_instance_t *process) {
-  int ret;
-
-  __tracing_send_stop_cmd(&process->fx2_manager);
-
-  fx2_free_bulk_transfer(&process->transfer_cnfg);
-
-  fx2_close_device(&process->fx2_manager);
-
-  process->state = STOPPED;
-
-  return 0;
-}
-
 gboolean tracing_running(tracing_instance_t* process) {
   if (process == NULL)
     return 0;
@@ -240,7 +235,7 @@ gboolean tracing_running(tracing_instance_t* process) {
 
 }
 
-int __tracing_send_start_cmd(struct fx2_device_manager *manager_instc) {
+int __tracing_fw_send_start_cmd(struct fx2_device_manager *manager_instc) {
   int ret;
   if ((ret = send_control_command(
                                   manager_instc,
@@ -255,7 +250,7 @@ int __tracing_send_start_cmd(struct fx2_device_manager *manager_instc) {
   return 0;
 }
 
-int __tracing_send_stop_cmd(struct fx2_device_manager *manager_instc) {
+int __tracing_fw_send_stop_cmd(struct fx2_device_manager *manager_instc) { /*  */
   int ret;
   g_message("send stop sampling command to device");
 
@@ -270,51 +265,32 @@ int __tracing_send_stop_cmd(struct fx2_device_manager *manager_instc) {
   return 0;
 }
 
+// hands of control of USB device request back to the fx2 default USB device
+// this is done as (hopefully) working around a problem where sometimes
+// the fx2 stops enumerating after conclusion of a test run (the testbed script toggles
+// of the power of the integrated raspberry usb-hub).
+int __tracing_fw_hand_off_ctrl(struct fx2_device_manager *manager_instc) {
+  int ret;
+  g_message("hand back USB request control to fx2 default USB device");
 
-int tracing_start(tracing_instance_t *process, struct channel_configuration channel_conf) {
-  struct fx2_device_manager *manager = &process->fx2_manager;
-  struct fx2_bulk_transfer_config *transfer_cnfg = &process->transfer_cnfg;
-
-  process->chan_conf.conf = channel_conf;
-
-  for (int k = 0; k < sizeof(process->chan_conf.conf_arr); k++) {
-    if(process->chan_conf.conf_arr[k] != SAMPLE_NONE){
-      process->active_channels_mask |= 1 << k;
-    }
+  if ((ret = send_control_command(
+                                  manager_instc,
+                                  LIBUSB_REQUEST_TYPE_VENDOR,
+                                  VC_RENUM, 0x00, 0, NULL, 0)) < 0) {
+    g_error("could not stop tracing:");
+    return -1;
   }
-
-  fx2_find_devices(manager);
-
-  fx2_open_device(manager);
-  sleep(2);
-
-  fx2_create_bulk_transfer(manager, transfer_cnfg, 20, (1 << 17));
-
-  fx2_set_bulk_transfer_packet_callback(transfer_cnfg, &data_feed_callback, (void *) process);
-
-  fx2_submit_bulk_transfer(transfer_cnfg);
-
-  __tracing_send_start_cmd(manager);
 
   return 0;
 }
 
 
-#define TMP_FIRMWARE_LOCATION "../firmware/build/bulkloop.bix"
 
-int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
-  int ret;
-
-  if(process->state == RUNNING) {
-    g_printf("Instance already running!\n");
-    return 1;
-  }
-
-  /* // initialize local clock */
-  init_clock(process, ANALYZER_FREQUENCY);
-
+// download is from the perspective of fx2lp, i.e., the firmware is downloaded into ram
+int __download_tracer_firmware(tracing_instance_t *process, char* firmware_path) {
+  struct fx2_device_manager *manager = &process->fx2_manager;
   // read firmware
-  char *fname_bix = TMP_FIRMWARE_LOCATION;
+  char *fname_bix = firmware_path;
 
   if (access(fname_bix, R_OK) != 0) {
     g_error("Could not read file %s", fname_bix);
@@ -333,26 +309,6 @@ int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQue
   unsigned char bix[f_size];
   fread(bix, sizeof(bix), 1, f_bix);
 
-  /* if(print_bix) */
-    /* pretty_print_memory(bix, 0x0000, sizeof(bix)); */
-
-  // enumerate candidate device
-  struct fx2_device_manager *manager = &process->fx2_manager;
-
-  fx2_init_manager(manager);
-  fx2_find_devices(manager);
-  fx2_open_device(manager);
-
-  unsigned char data[2];
-
-  // check status
-  send_control_command(manager,
-                       LIBUSB_RECIPIENT_DEVICE | LIBUSB_REQUEST_TYPE_STANDARD |
-                           LIBUSB_REQUEST_HOST_TO_DEVICE,
-                       LIBUSB_REQUEST_GET_STATUS, 0, 0, data, 2);
-
-  g_message("Status: %x", data[0] << 4 | data[1]);
-
   // write firmware to device
   fx2_cpu_set_reset(manager);
 
@@ -362,6 +318,129 @@ int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQue
 
   /* fx2_upload_fw(manager, NULL, 0); */
   fx2_cpu_unset_reset(manager);
+}
+
+int __tracing_fw_stat(struct fx2_device_manager *manager_instc) {
+  int ret;
+  unsigned char data[1];
+  if ((ret = send_control_command(
+                                  manager_instc,
+                                  LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_REQUEST_DIR_IN,
+                                  VC_FWSTAT, 0x00, 0, data, 1)) < 0) {
+    g_error("could not start tracing:");
+    return -1;
+  }
+
+  g_message("firmware responded with status code: %d", data[0]);
+
+  return 0;
+}
+
+
+// TODO pass from higher layer
+/* #define TMP_FIRMWARE_LOCATION "../firmware/build/bulkloop.bix" */
+#define TMP_FIRMWARE_LOCATION "/usr/testbed/gpio-tracer2/gpio-tracer/firmware/build/bulkloop.bix"
+int tracing_start(tracing_instance_t *process, struct channel_configuration channel_conf) {
+  struct fx2_device_manager *manager = &process->fx2_manager;
+  struct fx2_bulk_transfer_config *transfer_cnfg = &process->transfer_cnfg;
+
+  process->chan_conf.conf = channel_conf;
+
+  for (int k = 0; k < sizeof(process->chan_conf.conf_arr); k++) {
+    if(process->chan_conf.conf_arr[k] != SAMPLE_NONE){
+      process->active_channels_mask |= 1 << k;
+    }
+  }
+
+  fx2_find_devices(manager);
+
+  fx2_open_device(manager);
+
+  unsigned char retry_count = 0;
+  while (retry_count++ < 10) {
+    if(  fx2_get_status(manager) >= 0  ) {
+      break;
+    }
+
+    fx2_close_device(manager);
+
+    sleep(5);
+
+    fx2_open_device(manager);
+
+    sleep(1);
+
+    fx2_reset_device(manager);
+  }
+
+  __tracing_fw_stat(manager);
+
+  sleep(2);
+
+  fx2_create_bulk_transfer(manager, transfer_cnfg, 20, (1 << 17));
+
+  fx2_set_bulk_transfer_packet_callback(transfer_cnfg, &data_feed_callback, (void *) process);
+
+  fx2_submit_bulk_transfer(transfer_cnfg);
+
+  __tracing_fw_send_start_cmd(manager);
+
+  return 0;
+}
+
+
+int tracing_stop(tracing_instance_t *process) {
+  int ret;
+
+  __tracing_fw_send_stop_cmd(&process->fx2_manager);
+
+  __tracing_fw_hand_off_ctrl(&process->fx2_manager);
+
+  fx2_free_bulk_transfer(&process->transfer_cnfg);
+
+  fx2_close_device(&process->fx2_manager);
+
+  fx2_deinit_manager(&process->fx2_manager);
+
+  process->state = STOPPED;
+
+  return 0;
+}
+
+int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
+  int ret;
+  struct fx2_device_manager *manager = &process->fx2_manager;
+
+  if(process->state == RUNNING) {
+    g_printf("Instance already running!\n");
+    return 1;
+  }
+
+  /* // initialize local clock */
+  init_clock(process, ANALYZER_FREQUENCY);
+
+
+  // enumerate candidate device
+
+
+  fx2_init_manager(manager);
+  fx2_find_devices(manager);
+  fx2_open_device(manager);
+
+  fx2_get_status(manager);
+
+  unsigned char data[2];
+
+  // check status
+  // TODO this should be moved into fx2.c. Control commands etc. should only be send if the device is in a good known state
+  send_control_command(manager,
+                       LIBUSB_RECIPIENT_DEVICE | LIBUSB_REQUEST_TYPE_STANDARD |
+                           LIBUSB_REQUEST_DIR_IN,
+                       LIBUSB_REQUEST_GET_STATUS, 0, 0, data, 2);
+
+  g_message("Status: %x", data[0] << 8 | data[1]);
+
+  __download_tracer_firmware(process, TMP_FIRMWARE_LOCATION);
   sleep(1);
 
   fx2_close_device(manager);

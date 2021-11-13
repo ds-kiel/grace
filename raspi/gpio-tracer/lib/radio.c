@@ -25,8 +25,8 @@ static gpointer radio_thread_func(gpointer data) {
     int bytes_avail;
     guint64 *ref_time = NULL;
 
-    ref_time = g_async_queue_timeout_pop(_timestamp_unref_queue, 2e6);
-    /* ref_time = g_async_queue_pop(_timestamp_unref_queue); */
+    /* ref_time = g_async_queue_timeout_pop(_timestamp_unref_queue, 2e6); */
+    ref_time = g_async_queue_pop(_timestamp_unref_queue);
     g_message("pop unreferenced timestamp from queue");
     g_usleep(1000);
 
@@ -90,6 +90,48 @@ static gpointer radio_thread_func(gpointer data) {
       }
     }
   }
+}
+
+guint64 radio_retrieve_timestamp() {
+  int ret;
+  int bytes_avail;
+  guint64 ref_time;
+
+  if (IS_STATE(cc1101_get_chip_state(), RXFIFO_OVERFLOW)) {
+    cc1101_command_strobe(header_command_sfrx);
+    for(int i = 0; i < 20; i++) {
+      g_message("radio overflowed -> resetting");
+    }
+    ref_time = 0;
+  } else if (IS_STATE(cc1101_get_chip_state(), IDLE)) {
+    bytes_avail = cc1101_rx_fifo_bytes();
+    g_message("bytes in queue: %d", bytes_avail);
+    if(bytes_avail == 7) { // 4 bytes data + additional information (radio strength, ...)
+      guint8 read_buf[bytes_avail];
+      guint32 reference_timestamp_sec;
+
+      cc1101_read_rx_fifo(read_buf, bytes_avail);
+      memcpy(&reference_timestamp_sec, read_buf+1, sizeof(guint32));
+
+      g_message("Got reference seconds: %d", reference_timestamp_sec);
+
+      /* __prec_time_from_secs(reference_timestamp_sec, ref_time); */
+      ref_time = (guint64)reference_timestamp_sec;
+    } else { // noise was incorrectly classified as valid packet
+      for(int i = 0; i < 20; i++) {
+        g_message("Wrong packet size!");
+      }
+      cc1101_command_strobe(header_command_sfrx);
+      ref_time = 0;
+    }
+
+    g_message("state before reset: %s", cc1101_get_chip_state_str());
+
+    cc1101_set_receive(); // we are ready to receive another package
+    g_message("state after reset: %s", cc1101_get_chip_state_str());
+  }
+
+  return ref_time;
 }
 
 int radio_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
@@ -233,7 +275,7 @@ int radio_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_qu
 int radio_deinit() {
   // TODO implement me
   _running = 0;
-  g_thread_join(radio_thread);
+  /* g_thread_join(radio_thread); */
 
   return 0;
 }
@@ -249,5 +291,5 @@ void radio_start_reception() {
 
   cc1101_set_receive();
 
-  radio_thread = g_thread_new("radio", radio_thread_func, NULL);
+  /* radio_thread = g_thread_new("radio", radio_thread_func, NULL); */
 }

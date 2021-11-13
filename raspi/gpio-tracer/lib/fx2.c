@@ -54,16 +54,19 @@ int fx2_init_manager(struct fx2_device_manager *manager_instc) {
     return -1;
   }
 
+  manager_instc->event_handler_exit = 0;
   manager_instc->event_handler_thread = g_thread_new("bulk transfer thread", &fx2_transfer_main_loop, (void *)manager_instc);
 
   return 0;
 }
 
 int fx2_deinit_manager(struct fx2_device_manager *manager_instc) {
-  // TODO
-  // deinit libusb cntxt
-  // stop event handling thread
-  // ...
+  manager_instc->event_handler_exit = 1;
+
+  g_thread_join(manager_instc->event_handler_thread);
+
+  libusb_exit(manager_instc->libusb_cntxt);
+
   return 0;
 }
 
@@ -173,18 +176,17 @@ int fx2_open_device(struct fx2_device_manager *manager_instc) {
     return -1;
   }
 
-  //fx2_get_string_descriptor(manager_instc);
 
   if ( (ret = libusb_claim_interface(*dev_handl, 0)) < 0) {
     g_error("Could not claim interface 0: %s", libusb_error_name(ret));
     return -1;
   }
 
-  // Sets EP0 into alternate mode 0
-  if ( (ret = libusb_set_interface_alt_setting(*dev_handl, 0, 0)) < 0) {
-    g_error("Could not set interface alt setting: %s", libusb_error_name(ret));
-    return -1;
-  }
+  /* // Sets EP0 into alternate mode 0 */
+  /* if ( (ret = libusb_set_interface_alt_setting(*dev_handl, 0, 0)) < 0) { */
+  /*   g_warning("Could not set interface alt setting: %s", libusb_error_name(ret)); */
+  /*   return -1; */
+  /* } */
 
   return 0;
 }
@@ -226,7 +228,7 @@ int send_control_command(struct fx2_device_manager *manager_instc,
   libusb_device_handle *dev_handl;
 
   if (fx2_device_ready(manager_instc) < 0) {
-    g_error("unable to send control command to device.");
+    g_warning("unable to send control command to device.");
     return -1;
   }
 
@@ -234,7 +236,7 @@ int send_control_command(struct fx2_device_manager *manager_instc,
 
   if ((ret = libusb_control_transfer(dev_handl, bmRequestType, bRequest, wValue,
                                      wIndex, data, wLength, 0)) < 0) {
-    g_error("Control transfer failed: %s", libusb_error_name(ret));
+    g_warning("Control transfer failed: %s", libusb_error_name(ret));
     return -1;
   }
 
@@ -276,6 +278,41 @@ static int __fx2_cpu_set_reset_state(struct fx2_device_manager *manager_instc, u
   return 0;
 }
 
+int __fx2_get_status_bytes(struct fx2_device_manager *manager_instc) {
+  int ret;
+  unsigned char data[2];
+
+  if((ret = send_control_command(manager_instc,
+                                 LIBUSB_RECIPIENT_DEVICE | LIBUSB_REQUEST_TYPE_STANDARD |
+                                 LIBUSB_REQUEST_DIR_IN,
+                                 LIBUSB_REQUEST_GET_STATUS, 0, 0, data, 2)) < 0) {
+    return -1;
+  }
+
+  g_message("Device Status: %x, %x", data[0], data[1]);
+
+  if((ret = send_control_command(manager_instc,
+                                 LIBUSB_RECIPIENT_ENDPOINT | LIBUSB_REQUEST_TYPE_STANDARD |
+                                 LIBUSB_REQUEST_DIR_IN,
+                                 LIBUSB_REQUEST_GET_STATUS, 0, 0, data, 2)) < 0) {
+    return -1;
+  }
+
+
+  g_message("Endpoint Status: %x, %x", data[0], data[1]);
+
+  return 0;
+}
+
+// TODO this is the public facing interface. This should allow specifying where
+// status should be queried. maybe add enum for available queriable information.
+int fx2_get_status(struct fx2_device_manager *manager_isntc) {
+  int ret;
+
+  ret = __fx2_get_status_bytes(manager_isntc);
+
+  return ret;
+}
 
 // Set CPU into reset state by writing 1 to CPUCS
 int fx2_cpu_set_reset(struct fx2_device_manager *manager_instc) {
@@ -286,6 +323,7 @@ int fx2_cpu_set_reset(struct fx2_device_manager *manager_instc) {
 int fx2_cpu_unset_reset(struct fx2_device_manager *manager_instc) {
   return __fx2_cpu_set_reset_state(manager_instc, 0x00);
 }
+
 
 
 #define __MAX_READ_BYTES 4096
@@ -309,7 +347,7 @@ int fx2_upload_firmware(struct fx2_device_manager *manager_instc, unsigned char 
 
     if ((ret = send_control_command(
                                     manager_instc,
-                                    LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_REQUEST_HOST_TO_DEVICE,
+                                    LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_REQUEST_DIR_IN,
                                     LIBUSB_FX2_LOAD_FIRMWARE, FX2_PROG_RAM_BOT + received_bytes, 0, buf + received_bytes, read)) <= 0) {
       g_error("could not read ram contents, ret: %d / %s", ret,
               libusb_error_name(ret));
@@ -323,7 +361,6 @@ int fx2_upload_firmware(struct fx2_device_manager *manager_instc, unsigned char 
 
   return 0;
 }
-
 
 #define __MAX_WRITE_BYTES 4096
 // Download data into EZ-USB memory
@@ -386,10 +423,9 @@ void __transfer_callback(struct libusb_transfer *transfer) {
 void* fx2_transfer_main_loop(void *thread_data) {
   struct fx2_device_manager *manager_instc = (struct fx2_device_manager*) thread_data;
 
-  while (1) {
+  while (!manager_instc->event_handler_exit) {
     libusb_handle_events(manager_instc->libusb_cntxt);
   }
-
 }
 
 
@@ -430,7 +466,7 @@ int fx2_create_bulk_transfer(struct fx2_device_manager *manager_instc,
         transfer_cnfg->transfers[i], manager_instc->fx2_dev_handl, 0x82,
         transfer_cnfg->transfer_buffers[i],
         transfer_size * sizeof(unsigned char), &__transfer_callback,
-        (void *)&(transfer_cnfg->user_data[i]), 2000); // timeout currently hardcoded to two seconds.
+        (void *)&(transfer_cnfg->user_data[i]), 4000); // timeout currently hardcoded to 4 seconds.
   }
 
   return 0;
@@ -488,7 +524,8 @@ int fx2_free_bulk_transfer(struct fx2_bulk_transfer_config *transfer_cnfg) {
   return 0;
 }
 
-int fx2_reset_device(struct fx2_device_manager *manager_instc,
-                     libusb_device *target_dev) {
+int fx2_reset_device(struct fx2_device_manager *manager_instc) {
+
+  libusb_reset_device(manager_instc->fx2_dev_handl);
   return -1;
 };

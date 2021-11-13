@@ -96,6 +96,8 @@ static int start_tasks(struct channel_configuration chan_conf) {
     return -1;
   }
 
+  sleep(1); // give device some time for reNumeration
+
   tracing_start(tracing_task, chan_conf);
 
   // start thread
@@ -145,7 +147,11 @@ static void handle_method_call(GDBusConnection *connnection,
       .ch1 = SAMPLE_ALL,
       .ch2 = SAMPLE_ALL,
       .ch3 = SAMPLE_ALL,
-      .ch8 = SAMPLE_RADIO,
+      .ch4 = SAMPLE_ALL,
+      .ch5 = SAMPLE_ALL,
+      .ch6 = SAMPLE_ALL,
+      .ch7 = SAMPLE_ALL,
+      .ch8 = SAMPLE_RADIO | SAMPLE_ALL,
     };
 
     if ((ret = start_tasks(chan_conf)) < 0) {

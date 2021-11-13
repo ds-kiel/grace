@@ -56,14 +56,6 @@ int main(int argc, char *argv[]) {
 
   unsigned char data[2];
 
-  // check status
-  send_control_command(&manager,
-                       LIBUSB_RECIPIENT_DEVICE | LIBUSB_REQUEST_TYPE_STANDARD |
-                           LIBUSB_REQUEST_HOST_TO_DEVICE,
-                       LIBUSB_REQUEST_GET_STATUS, 0, 0, data, 2);
-
-  g_message("Status: %x", data[0] << 4 | data[1]);
-
   // write firmware to device
   fx2_cpu_set_reset(&manager);
 

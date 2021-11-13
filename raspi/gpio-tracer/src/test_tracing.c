@@ -13,7 +13,7 @@
 
 int print_bix = 0;
 
-#define TRACE_PATH "/tmp/test-traces/"
+/* #define TRACE_PATH "/tmp/test-traces/" */
 
 void packet_callback(uint8_t *packet_data, int length) {
   g_message("Got %d\n", length);
@@ -32,13 +32,18 @@ int main(int argc, char *argv[]) {
     .ch8 = SAMPLE_RADIO,
   };
 
+  if (argc < 2) {
+    printf("missing arguments. Usage: test_fx2 <path_for_traces>\n");
+    return 0;
+  }
+
   _timestamp_unref_queue = g_async_queue_new();
   _timestamp_ref_queue   = g_async_queue_new();
 
   tracing_task = malloc(sizeof(tracing_instance_t));
 
   chunked_output = chunked_output_new();
-  chunked_output_init(chunked_output, TRACE_PATH);
+  chunked_output_init(chunked_output, argv[1]);
 
 #ifdef WITH_TIMESYNC
   g_message("Time synchronization enabled");
@@ -56,7 +61,7 @@ int main(int argc, char *argv[]) {
   radio_start_reception();
 #endif
 
-  sleep(1);
+  sleep(10);
 
   print_free_running_clock_time(tracing_task);
 

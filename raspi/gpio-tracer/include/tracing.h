@@ -23,17 +23,19 @@ enum channel_state {
   SAMPLE_NONE = 0,
   SAMPLE_RISING = 1,
   SAMPLE_FALLING = 2,
-  SAMPLE_ALL = SAMPLE_RISING | SAMPLE_FALLING,
-  SAMPLE_RADIO = 4
+  SAMPLE_RADIO = 4,
+  SAMPLE_ALL = SAMPLE_RISING | SAMPLE_FALLING
 };
 
 enum TRACER_VENDOR_COMMANDS {
   VC_EPSTAT = 0xB1,
-  VC_START_SAMP = 0xB2,
+  VC_FWSTAT,
+  VC_START_SAMP,
   VC_STOP_SAMP,
-  VC_SET_DELAY,
-  VC_GET_DELAY,
+  VC_RENUM,
+  VC_SET_DELAY
 };
+
 
 struct channel_configuration {
     enum channel_state ch1;

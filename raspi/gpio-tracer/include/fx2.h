@@ -6,8 +6,7 @@
 
 // Vendor Requests
 #define LIBUSB_FX2_LOAD_FIRMWARE 0xA0
-
-#define LIBUSB_REQUEST_HOST_TO_DEVICE 0x01 << 7
+#define LIBUSB_REQUEST_DIR_IN 0x01 << 7
 
 typedef void (*fx2_packet_callback_fn)(uint8_t *packet_data, int length, void *user_data);
 
@@ -20,6 +19,7 @@ struct fx2_device_manager {
   struct libusb_device_descriptor fx2_desc;
 
   GThread *event_handler_thread;
+  uint8_t event_handler_exit;
 };
 
 struct transfer_data {
@@ -55,11 +55,15 @@ int fx2_deinit_manager(struct fx2_device_manager *manager_instc);
 
 int fx2_find_devices(struct fx2_device_manager *manager_instc);
 
+int fx2_get_status(struct fx2_device_manager *manager_isntc);
+
 int fx2_open_device(struct fx2_device_manager *manager_instc);
 
 int fx2_close_device(struct fx2_device_manager *manager_instc);
 
 int fx2_upload_firmware(struct fx2_device_manager *manager_instc, unsigned char *buf);
+
+int fx2_reset_device(struct fx2_device_manager *manager_instc);
 
 int fx2_download_firmware(struct fx2_device_manager *manager_instc,
                           unsigned char *buf, size_t length, int verify);
