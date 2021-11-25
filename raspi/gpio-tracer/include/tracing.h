@@ -58,7 +58,7 @@ union __channel_configuration {
 struct lclock {
   clock_state_t state;
 
-  gint64 nom_freq; // nominal frequency
+  gint64 nom_seq; // nominal frequency
   /* struct precision_time curr_t; */
   guint64 freq;
 

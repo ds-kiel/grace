@@ -21,7 +21,7 @@
 #define TICKS_PER_SECOND ((guint64) 1 << 60)
 #define TICKS_PER_NANOSECOND (((guint64) 1 << 60)/1000000000)
 
-#define NEW_ESTIMATE_WEIGHT 0.5
+#define NEW_ESTIMATE_WEIGHT 0.90
 
 
 int __tracing_fw_send_start_cmd(struct fx2_device_manager *manager_instc);
@@ -35,7 +35,7 @@ guint64 accumulator;
 guint64 seconds;
 
 void init_clock(tracing_instance_t* process, guint64 frequency) {
-  process->local_clock.nom_freq = frequency;
+  process->local_clock.nom_seq = frequency;
   process->local_clock.freq = 0;
   process->local_clock.state = WAIT;
   process->local_clock.free_seq = 0;
@@ -110,7 +110,7 @@ static void handle_time_ref_signal(tracing_instance_t *process) {
     }
     case OFFSET: {
       time_since_last = ref_time - clk->prev_time;
-      clk->adjusted_frequency = clk->nom_frequency*(((double)time_since_last*clk->nom_freq)/clk->free_seq);
+      clk->adjusted_frequency = clk->nom_frequency*(((double)time_since_last*clk->nom_seq)/clk->free_seq);
 
       clk->state = FREQ;
       goto phase_error;
@@ -119,7 +119,7 @@ static void handle_time_ref_signal(tracing_instance_t *process) {
     case FREQ: { // Main case. reached after two reference signals are received.
       frequency_error:
       time_since_last = ref_time - clk->prev_time;
-      clk->adjusted_frequency = (1.0-NEW_ESTIMATE_WEIGHT)*clk->adjusted_frequency +  NEW_ESTIMATE_WEIGHT * clk->nom_frequency*(((double)time_since_last*clk->nom_freq)/clk->free_seq);
+      clk->adjusted_frequency = (1.0-NEW_ESTIMATE_WEIGHT)*clk->adjusted_frequency +  NEW_ESTIMATE_WEIGHT * clk->nom_frequency*(((double)time_since_last*clk->nom_seq)/clk->free_seq);
 
       /* other variant*/
       phase_error:
@@ -138,7 +138,7 @@ static void handle_time_ref_signal(tracing_instance_t *process) {
         g_message("reference seconds %" G_GUINT64_FORMAT, ref_time);
       }
 
-      clk->offset_adj = clk->offset / (clk->nom_freq);
+      clk->offset_adj = clk->offset / (clk->nom_seq);
       clk->free_seq = 0;
       clk->prev_time = ref_time;
 
@@ -211,7 +211,7 @@ void data_feed_callback(uint8_t *packet_data, int length, void *user_data) {
               state = 1;
             }
 
-            handle_gpio_signal(process, state, k);
+            handle_gpio_signal(process, state, k+1);
           }
         }
       }

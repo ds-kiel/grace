@@ -1,4 +1,4 @@
-FX2LIBDIR=./../external/fx2lib/
+FX2LIBDIR=./../../external/fx2lib/
 BASENAME = bulkloop
 SOURCES=bulkloop.c
 A51_SOURCES=dscr.a51
