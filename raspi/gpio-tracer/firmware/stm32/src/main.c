@@ -1,5 +1,4 @@
-/**
-  ******************************************************************************
+/**  ******************************************************************************
   * @file           : main.c
   * @brief          : Main program body
   ******************************************************************************
@@ -18,13 +17,25 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "spi.h"
+#include "stm32f4xx_hal_def.h"
+#include "stm32f4xx_hal_i2c.h"
 #include "tim.h"
+#include "exti.h"
+#include "uart.h"
+#include "i2c.h"
 #include "usb.h"
 #include "gpio.h"
 #include "cc1101.h"
 #include "time.h"
 
+/* extern I2C_HandleTypeDef hi2c1; */
+
 void SystemClock_Config(void);
+void InitializePeripherals();
+
+static uint8_t i2c_data[4];
+
+void ListenForData();
 
 /**
   * @brief  The application entry point.
@@ -41,39 +52,58 @@ int main(void)
   SystemClock_Config();
 
   /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_USB_DEVICE_Init();
-  MX_SPI1_Init();
-  MX_TIM2_Init();
-  MX_TIM3_Init();
-  MX_TIM5_Init();
+  InitializePeripherals();
+
   TIME_Reset();
   cc1101_init();
   HAL_TIM_Base_Start_IT(&htim2);
+
+  /* MX_EXTI_Init(); */
   /* HAL_TIM_Base_Start_IT(&htim3); */
   /* HAL_TIM_Base_Start_IT(&htim5); */
   /* HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_1); */
   /* HAL_TIM_Base_Start_IT(&htim5); */
 
+  ListenForData();
 
   /* Infinite loop */
   while (1)
   {
     // disable interrupts??
-    HAL_Delay(1000U); // wait 100 milliseconds
-    /* CDC_Transmit_FS(data, strlen(data));  */
-    /* printf("Hello World from printf\n"); */
-    /* we could probably use one of the gpios for this, but for now just regularly check */
-    /* whether we are still in transmission mode */
-    /* if (IS_STATE(cc1101_get_chip_state(), TXFIFO_UNDERFLOW)) { */
-    /*   cc1101_command_strobe(header_command_sftx); */
-    /* } */
-
-    /* if (IS_STATE(cc1101_get_chip_state(), IDLE)) { */
-    /*   cc1101_set_transmit(); */
+    HAL_Delay(100U);
+    /* if( HAL_I2C_Slave_Receive(&hi2c1, i2c_data, 4, 10000) != HAL_OK) { */
+    /*   printf("Error\n"); */
     /* } */
   }
 }
+
+void InitializePeripherals() {
+  MX_GPIO_Init();
+  MX_USB_DEVICE_Init();
+  MX_SPI1_Init();
+  MX_I2C1_Init();
+  MX_TIM2_Init();
+  MX_TIM3_Init();
+  MX_TIM5_Init();
+  /* MX_UART1_Init(); */
+};
+
+void ListenForData() {
+  HAL_I2C_Slave_Receive_IT(&hi2c1, i2c_data, 4);
+}
+
+void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef * hi2c)
+{
+  printf("Got Data\n");
+  ListenForData();
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *I2cHandle)
+{
+  printf("Error\n");
+  ListenForData();
+}
+
 
 /**
   * @brief System Clock Configuration

@@ -1,8 +1,8 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file    stm32f4xx_it.h
-  * @brief   This file contains the headers of the interrupt handlers.
+  * @file    i2c.h
+  * @brief   This file contains all the function prototypes for
+  *          the i2c.c file
   ******************************************************************************
   * @attention
   *
@@ -14,30 +14,18 @@
   * License. You may obtain a copy of the License at:
   *                        opensource.org/licenses/BSD-3-Clause
   *
- ******************************************************************************
+  ******************************************************************************
   */
-/* USER CODE END Header */
-
 /* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef __STM32F4xx_IT_H
-#define __STM32F4xx_IT_H
+#ifndef __I2C_H__
+#define __I2C_H__
 
-void NMI_Handler(void);
-void HardFault_Handler(void);
-void MemManage_Handler(void);
-void BusFault_Handler(void);
-void UsageFault_Handler(void);
-void SVC_Handler(void);
-void DebugMon_Handler(void);
-void PendSV_Handler(void);
-void SysTick_Handler(void);
-void TIM2_IRQHandler(void);
-void TIM3_IRQHandler(void);
-void TIM5_IRQHandler(void);
-void OTG_FS_IRQHandler(void);
-void EXTI15_10_IRQHandler(void);
+#include <stm32f4xx_hal.h>
 
+extern I2C_HandleTypeDef hi2c1;
 
-#endif /* __STM32F4xx_IT_H */
+void MX_I2C1_Init(void);
+
+#endif /* __I2C_H__ */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

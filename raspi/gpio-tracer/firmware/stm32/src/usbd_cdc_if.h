@@ -30,10 +30,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include <usbd_cdc.h>
 
-/* USER CODE BEGIN INCLUDE */
-
-/* USER CODE END INCLUDE */
-
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
   * @brief For Usb device.
   * @{
@@ -48,13 +44,11 @@
   * @brief Defines.
   * @{
   */
-/* USER CODE BEGIN EXPORTED_DEFINES */
+
 /* Define size for the receive and transmit buffer over CDC */
 /* It's up to user to redefine and/or remove those define */
 #define APP_RX_DATA_SIZE  1000
 #define APP_TX_DATA_SIZE  1000
-
-/* USER CODE END EXPORTED_DEFINES */
 
 /**
   * @}
@@ -65,10 +59,6 @@
   * @{
   */
 
-/* USER CODE BEGIN EXPORTED_TYPES */
-
-/* USER CODE END EXPORTED_TYPES */
-
 /**
   * @}
   */
@@ -77,10 +67,6 @@
   * @brief Aliases.
   * @{
   */
-
-/* USER CODE BEGIN EXPORTED_MACRO */
-
-/* USER CODE END EXPORTED_MACRO */
 
 /**
   * @}
@@ -94,10 +80,6 @@
 /** CDC Interface callback. */
 extern USBD_CDC_ItfTypeDef USBD_Interface_fops_FS;
 
-/* USER CODE BEGIN EXPORTED_VARIABLES */
-
-/* USER CODE END EXPORTED_VARIABLES */
-
 /**
   * @}
   */
@@ -108,10 +90,6 @@ extern USBD_CDC_ItfTypeDef USBD_Interface_fops_FS;
   */
 
 uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
-
-/* USER CODE BEGIN EXPORTED_FUNCTIONS */
-
-/* USER CODE END EXPORTED_FUNCTIONS */
 
 /**
   * @}

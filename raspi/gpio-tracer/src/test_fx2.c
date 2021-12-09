@@ -2,6 +2,7 @@
 #include <glib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <tracing.h>
 
 int print_bix = 0;
 
@@ -77,11 +78,20 @@ int main(int argc, char *argv[]) {
   sleep(2);
 
 
-  #define VC_START_SAMP 0xB2
-  send_control_command(
-                       &manager,
-                       LIBUSB_REQUEST_TYPE_VENDOR,
-                       VC_START_SAMP, 0x00, 0, NULL, 0);
+  /* #define VC_START_SAMP 0xB2 */
+  /* send_control_command( */
+  /*                      &manager, */
+  /*                      LIBUSB_REQUEST_TYPE_VENDOR, */
+  /*                      VC_START_SAMP, 0x00, 0, NULL, 0);  */
+
+  for(size_t k = 0; k < 100; k++) {
+    send_control_command(
+                         &manager,
+                         LIBUSB_REQUEST_TYPE_VENDOR,
+                         VC_UART_TEST, 0x00, 0, NULL, 0);
+    sleep(1);
+  }
+
 
   fx2_deinit_manager(&manager);
 

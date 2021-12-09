@@ -26,12 +26,17 @@
 /* Private includes ----------------------------------------------------------*/
 
 #include "cc1101.h"
+#include "stm32f4xx_hal_exti.h"
 #include "time.h"
 
 /* External variables --------------------------------------------------------*/
 extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim5;
+
+extern I2C_HandleTypeDef hi2c1;
+
+extern EXTI_HandleTypeDef hexti;
 
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
@@ -202,6 +207,29 @@ void TIM5_IRQHandler(void)
   HAL_TIM_IRQHandler(&htim5);
 }
 
+
+/**
+  * @brief This function handles EXTI global interrupt.
+  */
+void EXTI3_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_3);
+}
+
+/**
+  * @brief This function handles I2C global interrupt
+  */
+void I2C1_EV_IRQHandler(void) {
+  HAL_I2C_EV_IRQHandler(&hi2c1);
+}
+
+/**
+  * @brief This function handles I2C global error interrupt
+  */
+void I2C1_ER_IRQHandler(void) {
+  printf("i2c error\n");
+  HAL_I2C_ER_IRQHandler(&hi2c1);
+}
 
 /******************************************************************************/
 /* STM32F4xx Peripheral Interrupt Handlers                                    */

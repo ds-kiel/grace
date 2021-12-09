@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : usbd_desc.c
@@ -17,7 +16,6 @@
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 /* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __USBD_DESC__C__
 #define __USBD_DESC__C__
@@ -28,10 +26,6 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include <usbd_def.h>
-
-/* USER CODE BEGIN INCLUDE */
-
-/* USER CODE END INCLUDE */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
   * @{
@@ -51,11 +45,6 @@
 #define         DEVICE_ID3          (UID_BASE + 0x8)
 
 #define  USB_SIZ_STRING_SERIAL       0x1A
-
-/* USER CODE BEGIN EXPORTED_CONSTANTS */
-
-/* USER CODE END EXPORTED_CONSTANTS */
-
 /**
   * @}
   */
@@ -65,9 +54,6 @@
   * @{
   */
 
-/* USER CODE BEGIN EXPORTED_DEFINES */
-
-/* USER CODE END EXPORTED_DEFINES */
 
 /**
   * @}
@@ -78,9 +64,6 @@
   * @{
   */
 
-/* USER CODE BEGIN EXPORTED_TYPES */
-
-/* USER CODE END EXPORTED_TYPES */
 
 /**
   * @}
@@ -90,10 +73,6 @@
   * @brief Aliases.
   * @{
   */
-
-/* USER CODE BEGIN EXPORTED_MACRO */
-
-/* USER CODE END EXPORTED_MACRO */
 
 /**
   * @}
@@ -107,10 +86,6 @@
 /** Descriptor for the Usb device. */
 extern USBD_DescriptorsTypeDef FS_Desc;
 
-/* USER CODE BEGIN EXPORTED_VARIABLES */
-
-/* USER CODE END EXPORTED_VARIABLES */
-
 /**
   * @}
   */
@@ -119,10 +94,6 @@ extern USBD_DescriptorsTypeDef FS_Desc;
   * @brief Public functions declaration.
   * @{
   */
-
-/* USER CODE BEGIN EXPORTED_FUNCTIONS */
-
-/* USER CODE END EXPORTED_FUNCTIONS */
 
 /**
   * @}

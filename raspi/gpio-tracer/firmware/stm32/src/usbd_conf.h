@@ -17,7 +17,6 @@
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __USBD_CONF__H__
@@ -34,10 +33,6 @@
 #include "main.h"
 #include "stm32f4xx.h"
 #include "stm32f4xx_hal.h"
-
-/* USER CODE BEGIN INCLUDE */
-
-/* USER CODE END INCLUDE */
 
 /** @addtogroup USBD_OTG_DRIVER
   * @brief Driver for Usb device.
