@@ -134,7 +134,6 @@ void setup() {
   SETIF48MHZ();
   /* sio0_init(57600); */
 
-
   USE_USB_INTS();
   ENABLE_SUDAV();
   ENABLE_IBN();
@@ -147,12 +146,12 @@ void setup() {
   // we use EndPoint 2 for bulk transfers to the host
   EP2CFG = bmSIZE | bmTYPE1 | bmDIR | bmVALID | bmBUF;
   SYNCDELAY; //
+  EP1INCFG = bmVALID | bmTYPE1;
+  SYNCDELAY;
+  EP1OUTCFG = bmVALID | bmTYPE1;
+  SYNCDELAY;
   // disable all other endpoints
   EP6CFG &= ~bmVALID;
-  SYNCDELAY;
-  EP1INCFG &= ~bmVALID;
-  SYNCDELAY;
-  EP1OUTCFG &= ~bmVALID;
   SYNCDELAY;
   EP4CFG &= ~bmVALID;
   SYNCDELAY;
@@ -282,11 +281,6 @@ void main() {
       handle_setupdata();
       got_sud=FALSE;
     }
-
-    /* if (cnt++ == 255) { */
-    /*   write_data[0] = read_data[0]; */
-    /*   soft_spi_write(write_data, read_data, 1); */
-    /* } */
   }
 }
 
@@ -303,8 +297,7 @@ typedef enum {
   VC_START_SAMP,
   VC_STOP_SAMP,
   VC_RENUM,
-  VC_UART_TEST, // TODO rename/remove
-  VC_SET_DELAY
+  VC_SET_DELAY,
 } VENDOR_COMMANDS;
 
 
@@ -362,15 +355,13 @@ BOOL handle_vendorcommand(BYTE cmd) {
       /* USBCS &= bmDISCON; */
       return TRUE;
     }
-  case VC_UART_TEST:
-    /* i2c_send_byte(0x78); */
-    i2c_write(42, 0, NULL, 4, testdata);
-    return TRUE;
   default:
     debug_printf ( "Need to implement vendor command: %02x\n", cmd );
   }
   return FALSE;
 }
+
+/* i2c_write(42, 0, NULL, 4, testdata); */
 
 // this firmware only supports 0,0
 BOOL handle_get_interface(BYTE ifc, BYTE* alt_ifc) {
@@ -443,12 +434,6 @@ void set_gpif_delay(unsigned char delay) {
 
   *delay_state = delay;
 }
-
-/* void i2c_send_byte(BYTE byte) { */
-/*   /\* unsigned char addrs[2] = {1, 2}; *\/ */
-/*   /\* unsigned char data[2]  = {7, 8}; *\/ */
-/*   i2c_write(0x10, 0, NULL, 4, testdata); */
-/* } */
 
 char soft_spi_write(unsigned char *write_buf, unsigned char *read_buf, unsigned char length) {
   unsigned char written = 0;
