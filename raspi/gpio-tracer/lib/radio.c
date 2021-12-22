@@ -4,7 +4,7 @@
 #include <types.h>
 #include <configuration.h>
 
-#include <cc1101-spidev/cc1101.h>
+#include <cc1101.h>
 #include <inttypes.h>
 #include <time.h>
 /* #include <fx2.h> */
@@ -150,15 +150,23 @@ int radio_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_qu
     g_message("device is settling");
   }
 
-  cc1101_generate_default_configuration(cc1101_config);
+
+
+  cc1101_generate_reset_configuration(cc1101_config);
   if ((ret = cc1101_check_configuration_values(cc1101_config)) > 0) {
-    g_error("Configuration after reset does not correspond with default configuration at pos: %d", ret);
+    g_message("Configuration after reset does not correspond with default configuration at addr: 0x%x", ret);
+    // TODO remove see backlock
   }
+
+  cc1101_set_base_freq(cc1101_config, 1091553);// frequency increment for roughly 433MHz transmission
 
   cc1101_high_sense_configuration(cc1101_config);
   cc1101_write_configuration(cc1101_config);
 
-  cc1101_set_base_freq(1091553);// frequency increment for roughly 433MHz transmission
+  if ((ret = cc1101_check_configuration_values(cc1101_config)) > 0) {
+    g_message("Configuration after reset does not correspond with default configuration at addr: 0x%x", ret);
+    // TODO remove see backlock
+  }
 
   // ensure device is in IDLE mode
   cc1101_command_strobe(header_command_sidle);

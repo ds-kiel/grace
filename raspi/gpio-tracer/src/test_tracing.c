@@ -9,7 +9,13 @@
 
 #include <tracing.h>
 #include <chunked_output.h>
+#include <signal.h>
 
+static volatile int keep_running = 1;
+
+void intHandler(int dummy) {
+    keep_running = 0;
+}
 
 int print_bix = 0;
 
@@ -37,6 +43,8 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
+  signal(SIGINT, intHandler);
+
   _timestamp_unref_queue = g_async_queue_new();
   _timestamp_ref_queue   = g_async_queue_new();
 
@@ -61,7 +69,9 @@ int main(int argc, char *argv[]) {
   radio_start_reception();
 #endif
 
-  sleep(10);
+  while(keep_running) {
+    ;;
+  }
 
   print_free_running_clock_time(tracing_task);
 
