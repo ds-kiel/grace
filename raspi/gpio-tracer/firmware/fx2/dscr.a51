@@ -98,7 +98,7 @@ highspd_dscr_end:
 	.db	DSCR_INTERFACE_TYPE
 	.db	0				 ; index
 	.db	0				 ; alt setting idx
-	.db	1				 ; n endpoints
+	.db	3				 ; n endpoints
 	.db	0xff			 ; class
 	.db	0xff
 	.db	0xff
@@ -155,7 +155,7 @@ fullspd_dscr_end:
 	.db	DSCR_INTERFACE_TYPE
 	.db	0				 ; index
 	.db	0				 ; alt setting idx
-	.db	1				 ; n endpoints
+	.db	3				 ; n endpoints
 	.db	0xff			 ; class
 	.db	0xff
 	.db	0xff

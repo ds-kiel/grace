@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <tracing.h>
+#include <libusb.h>
 
 int print_bix = 0;
 
@@ -84,14 +85,26 @@ int main(int argc, char *argv[]) {
   /*                      LIBUSB_REQUEST_TYPE_VENDOR, */
   /*                      VC_START_SAMP, 0x00, 0, NULL, 0);  */
 
-  for(size_t k = 0; k < 100; k++) {
-    send_control_command(
-                         &manager,
-                         LIBUSB_REQUEST_TYPE_VENDOR,
-                         VC_UART_TEST, 0x00, 0, NULL, 0);
-    sleep(1);
-  }
+  enum {
+    REBOOT_TO_BOOTLOADER = 0x02
+  };
 
+  unsigned char test_data[1] = {[0] = REBOOT_TO_BOOTLOADER};
+  int actual_length;
+
+  while(1) {
+    int ret;
+
+    g_message("Sending %lu bytes to device", sizeof(test_data));
+    if ((ret = libusb_bulk_transfer(manager.fx2_dev_handl, 0x01, test_data, sizeof(test_data), &actual_length, 2000)) >= 0) {
+      g_message("successfully transferred %lu bytes", sizeof(test_data));
+      break;
+    }
+
+    g_message("could not send data to endpoint. Retrying");
+
+    sleep(10);
+  }
 
   fx2_deinit_manager(&manager);
 

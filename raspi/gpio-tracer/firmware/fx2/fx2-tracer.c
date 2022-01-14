@@ -44,7 +44,8 @@
 
 #define SYNCDELAY SYNCDELAY16
 #define REARMVAL 0x80
-#define REARMEP2() EP2BCL=REARMVAL
+#define REARMEP2()    EP2BCL=REARMVAL
+#define REARMEP1OUT() EP1OUTBC=REARMVAL // it does not matter which value is written here, so just reuse REARMVAL
 
 #define ENABLE_IBN() NAKIE |= bmIBN; // Ping & combined IN-BULK_NAK (IBN) interrupt enable
 #define ENABLE_EP2IBN() IBNIE |= bmEP2IBN; // Inidividual IBN interrupt enable
@@ -138,6 +139,7 @@ void setup() {
   ENABLE_SUDAV();
   ENABLE_IBN();
   ENABLE_EP2IBN();
+  ENABLE_EP1OUT();
   ENABLE_SOF();
   ENABLE_HISPEED();
   ENABLE_USBRESET();
@@ -263,7 +265,7 @@ void main() {
   // setup gpio ports for soft-SPI
   setup_soft_spi_ports();
 
-
+  REARMEP1OUT();
   /* REARMEP2(); */
   d3off();
 
@@ -412,6 +414,21 @@ void ibn_isr(void) __interrupt IBN_ISR {
   // we only use interrupts for endpoint 2 so only enable them
   ENABLE_EP2IBN();
   SYNCDELAY;
+}
+
+#define EP1OUTBUF_START 0xE780
+
+void ep1out_isr() __interrupt EP1OUT_ISR{
+  BYTE byte_count;
+
+  CLEAR_USBINT();
+
+  byte_count = EP1OUTBC;
+
+  i2c_write(42, 0, NULL, byte_count, (BYTE *) EP1OUTBUF_START);
+
+  // rearm endpoint for OUT transfers
+  REARMEP1OUT();
 }
 
 #define CLKpin 1
