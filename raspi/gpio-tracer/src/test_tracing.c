@@ -35,6 +35,10 @@ int main(int argc, char *argv[]) {
     .ch1 = SAMPLE_ALL,
     .ch2 = SAMPLE_ALL,
     .ch3 = SAMPLE_ALL,
+    .ch4 = SAMPLE_ALL,
+    .ch5 = SAMPLE_ALL,
+    .ch6 = SAMPLE_ALL,
+    .ch7 = SAMPLE_ALL,
     .ch8 = SAMPLE_RADIO,
   };
 

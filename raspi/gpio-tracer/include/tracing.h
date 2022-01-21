@@ -33,8 +33,25 @@ enum TRACER_VENDOR_COMMANDS {
   VC_START_SAMP,
   VC_STOP_SAMP,
   VC_RENUM,
-  VC_UART_TEST,
-  VC_SET_DELAY
+  VC_SET_DELAY,
+};
+
+enum tracer_frequencies {
+  FREQ_24000000 = 0x01,
+  FREQ_16000000,
+  FREQ_12000000,
+  FREQ_9600000,
+  FREQ_8000000,
+  FREQ_4000000,
+  FREQ_2000000,
+  FREQ_1000000
+};
+
+enum tracer_status_codes {
+  TRACER_GPIF_SETUP = 0x00,
+  TRACER_GPIF_READY = 0x01,
+  TRACER_GPIF_STOPPED = 0x02,
+  TRACER_GPIF_RUNNING = 0x03,
 };
 
 
@@ -95,6 +112,7 @@ typedef struct tracing_instance {
 
   struct fx2_device_manager fx2_manager;
   struct fx2_bulk_transfer_config transfer_cnfg;
+  enum tracer_frequencies current_freq;
 
   struct lclock local_clock;
 } tracing_instance_t;

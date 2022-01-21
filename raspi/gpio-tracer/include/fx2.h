@@ -8,9 +8,14 @@
 #define LIBUSB_FX2_LOAD_FIRMWARE 0xA0
 #define LIBUSB_REQUEST_DIR_IN 0x01 << 7
 
+enum fx2_status {
+  FX2_OK = 0x00,
+  FX2_NO_DATA = 0x01,
+};
+
+
 typedef void (*fx2_packet_callback_fn)(uint8_t *packet_data, int length, void *user_data);
-
-
+typedef void (*fx2_finished_callback_fn)(void *user_data);
 
 struct fx2_device_manager {
   libusb_context *libusb_cntxt;
@@ -18,15 +23,18 @@ struct fx2_device_manager {
   libusb_device_handle *fx2_dev_handl;
   struct libusb_device_descriptor fx2_desc;
 
+  GList *active_bulk_transfers;
+  GList *finished_bulk_transfers;
+
   GThread *event_handler_thread;
-  uint8_t event_handler_exit;
+  guint8 event_handler_exit;
 };
 
 struct transfer_data {
-  uint8_t transfer_finished;
-  size_t  transfer_num;
-  fx2_packet_callback_fn callback;
+  guint8 transfer_finished;
   void *cb_user_data;
+
+  struct fx2_bulk_transfer_config *transfer_cnfg;
 };
 
 struct fx2_bulk_transfer_config {
@@ -34,11 +42,16 @@ struct fx2_bulk_transfer_config {
   fx2_packet_callback_fn packet_handler_cb;
   void *transfer_cb_user_data;
 
+  fx2_finished_callback_fn finished_cb;
+  void *finished_cb_user_data;
+
+
   size_t transfer_size;
   size_t transfer_num;
+  size_t transfer_num_active;
 
   struct libusb_transfer **transfers;
-  struct transfer_data *user_data;
+  struct transfer_data *transfer_data; // TODO find a better naming scheme
   unsigned char **transfer_buffers;
 };
 
@@ -72,11 +85,17 @@ int fx2_create_bulk_transfer(struct fx2_device_manager *manager_instc,
                              struct fx2_bulk_transfer_config *transfer_cnfg,
                              size_t transfer_num, size_t transfer_size);
 
-int fx2_set_bulk_transfer_packet_callback(struct fx2_bulk_transfer_config *transfer_cnfg,
+void fx2_set_bulk_transfer_packet_callback(struct fx2_bulk_transfer_config *transfer_cnfg,
                             fx2_packet_callback_fn packet_handler,
                             void *user_data);
 
-int fx2_submit_bulk_transfer(struct fx2_bulk_transfer_config *transfer_cnfg);
+void fx2_set_bulk_transfer_finished_callback(
+    struct fx2_bulk_transfer_config *transfer_cnfg,
+    fx2_finished_callback_fn finished_callback, void *user_data);
+
+int fx2_submit_bulk_out_transfer(struct fx2_device_manager *manager_isntc, struct fx2_bulk_transfer_config *transfer_cnfg);
+
+void fx2_stop_bulk_out_transfer(struct fx2_bulk_transfer_config *transfer_cnfg);
 
 int fx2_free_bulk_transfer(struct fx2_bulk_transfer_config *transfer_cnfg);
 

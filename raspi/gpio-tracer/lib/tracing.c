@@ -17,17 +17,19 @@
 #include <stdlib.h>
 #include <math.h>
 #include <unistd.h>
+#include <assert.h>
 
 #define TICKS_PER_SECOND ((guint64) 1 << 60)
 #define TICKS_PER_NANOSECOND (((guint64) 1 << 60)/1000000000)
 
 #define NEW_ESTIMATE_WEIGHT 0.90
 
-
 int __tracing_fw_send_start_cmd(struct fx2_device_manager *manager_instc);
 int __tracing_fw_send_stop_cmd(struct fx2_device_manager *manager_instc);
 int __tracing_fw_hand_off_ctrl(struct fx2_device_manager *manager_instc);
 int __tracing_fw_stat(struct fx2_device_manager *manager_instc);
+int __tracing_fw_set_frequency(struct fx2_device_manager *manager, enum tracer_frequencies);
+enum tracer_frequencies __tracing_fw_get_frequency(struct fx2_device_manager *manager);
 
 /* #define G_LOG_DOMAIN "TRACING" */
 
@@ -163,17 +165,21 @@ default:
 // GPIO signal handling
 static inline void handle_gpio_signal(tracing_instance_t *process, guint8 state, guint8 channel) {
   /* struct trace *trace = malloc(sizeof(struct trace)); */
+#ifdef WITH_TIMESYNC
   if(process->local_clock.state==FREQ) {
+#endif
     struct trace trace;
     trace.channel = channel;
     trace.state = state;
     /* trace.timestamp_ns = (1000000000 * seconds + 1e9 * (double)accumulator/TICKS_PER_SECOND); */
     trace.timestamp_ns = (1000000000 * seconds + (accumulator/TICKS_PER_NANOSECOND));
 
-    /* g_debug("writing trace to file"); */
+    g_message("Got change on channel %d", channel);
     // print trace using output module write function
     (*process->output->write)(process->output, &trace);
+#ifdef WITH_TIMESYNC
   }
+#endif
 }
 
 void data_feed_callback(uint8_t *packet_data, int length, void *user_data) {
@@ -221,6 +227,65 @@ void data_feed_callback(uint8_t *packet_data, int length, void *user_data) {
   }
 }
 
+void tracer_datastream_finished_callback(void *user_data) {
+  tracing_instance_t *process = (tracing_instance_t*) user_data;
+  if(process->state == RUNNING) {
+    g_message("data stream stopped unexpectedly. Try to reduce sampling rate");
+
+    __tracing_fw_send_stop_cmd(&process->fx2_manager);
+
+    // the lowest possible frequency that we allow is 1MHz
+    if (process->current_freq < FREQ_1000000) {
+      process->current_freq++;
+      __tracing_fw_set_frequency(&process->fx2_manager, process->current_freq);
+
+      assert(__tracing_fw_get_frequency(&process->fx2_manager) == process->current_freq);
+
+      fx2_submit_bulk_out_transfer(&process->fx2_manager, &process->transfer_cnfg);
+
+      __tracing_fw_send_start_cmd(&process->fx2_manager);
+    } else {
+      g_message("Can't lower frequency any more. Stopping");
+    }
+
+
+  }
+}
+
+int __tracing_fw_set_frequency(struct fx2_device_manager *manager, enum tracer_frequencies frequency) {
+  int ret;
+  unsigned char data[1] = { frequency };
+
+  if ((ret = send_control_command(
+                                  manager,
+                                  LIBUSB_REQUEST_TYPE_VENDOR,
+                                  VC_SET_DELAY, 0x00, 0, data, sizeof(data))) < 0) {
+    g_error("could not set target sampling frequency:");
+    return -1;
+  }
+
+    g_message("Successfully set tracer sampling frequency");
+
+  return 0;
+}
+
+enum tracer_frequencies __tracing_fw_get_frequency(struct fx2_device_manager *manager) {
+  int ret;
+  unsigned char read[1];
+
+  if ((ret = send_control_command(
+                                  manager,
+                                  LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_REQUEST_DIR_IN,
+                                  VC_SET_DELAY, 0x00, 0, read, sizeof(read))) < 0) {
+    g_error("could not get tracer sampling frequency:");
+    return -1;
+  }
+
+  g_message("Got tracer frequency %d", read[0]);
+
+  return read[0];
+}
+
 gboolean tracing_running(tracing_instance_t* process) {
   if (process == NULL)
     return 0;
@@ -245,7 +310,7 @@ int __tracing_fw_send_start_cmd(struct fx2_device_manager *manager_instc) {
     return -1;
   }
 
-    g_message("send start sampling command to device");
+  g_message("send start sampling command to device");
 
   return 0;
 }
@@ -338,8 +403,8 @@ int __tracing_fw_stat(struct fx2_device_manager *manager_instc) {
 
 
 // TODO pass from higher layer
-/* #define TMP_FIRMWARE_LOCATION "../firmware/build/bulkloop.bix" */
-#define TMP_FIRMWARE_LOCATION "/usr/testbed/gpio-tracer2/gpio-tracer/firmware/build/bulkloop.bix"
+#define TMP_FIRMWARE_LOCATION "../firmware/fx2/build/fx2-tracer.bix"
+/* #define TMP_FIRMWARE_LOCATION "/usr/testbed/gpio-tracer2/gpio-tracer/firmware/build/fx2-tracer.bix" */
 int tracing_start(tracing_instance_t *process, struct channel_configuration channel_conf) {
   struct fx2_device_manager *manager = &process->fx2_manager;
   struct fx2_bulk_transfer_config *transfer_cnfg = &process->transfer_cnfg;
@@ -377,17 +442,47 @@ int tracing_start(tracing_instance_t *process, struct channel_configuration chan
 
   sleep(2);
 
+  __tracing_fw_set_frequency(manager, process->current_freq);
+
+  assert(__tracing_fw_get_frequency(manager) == process->current_freq);
+
   fx2_create_bulk_transfer(manager, transfer_cnfg, 20, (1 << 17));
 
   fx2_set_bulk_transfer_packet_callback(transfer_cnfg, &data_feed_callback, (void *) process);
 
-  fx2_submit_bulk_transfer(transfer_cnfg);
+  fx2_set_bulk_transfer_finished_callback(transfer_cnfg, &tracer_datastream_finished_callback, (void *) process);
+
+  fx2_submit_bulk_out_transfer(manager, transfer_cnfg);
 
   __tracing_fw_send_start_cmd(manager);
+
+  process->state = RUNNING;
 
   return 0;
 }
 
+/* /\* */
+/*  * Function: tracing_tracer_get_status */
+/*  * ---------------------------- */
+/*  *   returns: status code of tracing hardware */
+/*  * */
+/*  *   process: structure holding tracing instance data */
+/*  *\/ */
+/* enum tracer_status_codes tracing_tracer_get_status(struct fx2_device_manager *manager_instc) { */
+/*   int ret; */
+/*   unsigned char read[1]; */
+/*   if ((ret = send_control_command( */
+/*                                   manager_instc, */
+/*                                   LIBUSB_REQUEST_TYPE_VENDOR, */
+/*                                   VC_GET_STATUS, 0x00, 0, read, sizeof(read))) < 0) { */
+/*     g_error("could not read tracer status"); */
+/*     return -1; */
+/*   } */
+
+/*   g_message("Got tracer status 0x%x", read[0]); */
+
+/*   return read[0]; */
+/* } */
 
 int tracing_stop(tracing_instance_t *process) {
   int ret;
@@ -396,7 +491,7 @@ int tracing_stop(tracing_instance_t *process) {
 
   __tracing_fw_hand_off_ctrl(&process->fx2_manager);
 
-  fx2_free_bulk_transfer(&process->transfer_cnfg);
+  fx2_stop_bulk_out_transfer(&process->transfer_cnfg);
 
   fx2_close_device(&process->fx2_manager);
 
@@ -416,13 +511,13 @@ int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQue
     return 1;
   }
 
+  process->current_freq = FREQ_24000000;
+
   /* // initialize local clock */
   init_clock(process, ANALYZER_FREQUENCY);
 
 
   // enumerate candidate device
-
-
   fx2_init_manager(manager);
   fx2_find_devices(manager);
   fx2_open_device(manager);
@@ -450,8 +545,6 @@ int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQue
   process->timestamp_unref_queue = timestamp_unref_queue;
   process->timestamp_ref_queue = timestamp_ref_queue;
   process->output = output;
-
-  process->state = RUNNING;
 
   return 0;
 }

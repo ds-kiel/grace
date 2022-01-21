@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
 
   fx2_set_bulk_transfer_packet_callback(&transfer_cnfg, &packet_callback, NULL);
 
-  fx2_submit_bulk_transfer(&transfer_cnfg);
+  fx2_submit_bulk_out_transfer(&manager, &transfer_cnfg);
 
   unsigned char data[2];
 

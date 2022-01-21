@@ -5,7 +5,7 @@
 
 #define RADIO_TARGET_FREQUENCY 433000000
 
-GAsyncQueue *reference_timestamp_queue;
+/* GAsyncQueue *reference_timestamp_queue; */
 
 int radio_init(GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue);
 int radio_deinit();
