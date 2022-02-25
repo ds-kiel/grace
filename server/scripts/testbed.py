@@ -249,7 +249,7 @@ def load_curr_job_variables(need_curr_job, need_no_curr_job):
 
 def load_job_variables(user, job_id):
     """Load job-directory, platform, host-path and job-duration for given job."""
-    global job_dir, platform, hosts_path, duration
+    global job_dir, platform, hosts_path, duration, forward_serial
     # check if the job exists
     job_dir = get_job_directory(user, job_id)
     if job_dir == None:
@@ -259,6 +259,8 @@ def load_job_variables(user, job_id):
     platform = file_read(os.path.join(job_dir, "platform")).rstrip()
     # get path to the hosts file (list of PI nodes involved)
     hosts_path = os.path.join(job_dir, "hosts")
+    # get serial forwarding configuration
+    forward_serial = os.path.isfile(os.path.join(job_dir, ".forward-serial"))
     # get path to the duration file
     # duration_path = os.path.join(job_dir, "duration")
     duration = file_read(os.path.join(job_dir, "duration"))
@@ -369,6 +371,9 @@ def create(name, platform, hosts, copy_from, do_start, duration, metadata, post_
             print("Failed to copy metadata to %s" % dest)
             print(e)
             do_quit(1)
+    # configure serial forwarding
+    if forward_serial:
+        file_write(os.path.join(job_dir, ".forward-serial"), "")
     # copy post-processing script, if any
     if post_processing:
         post_processing_path = os.path.join(job_dir, "post_processing.sh")
