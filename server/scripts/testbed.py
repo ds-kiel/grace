@@ -40,6 +40,7 @@ post_processing = None
 is_nested = False
 force_reboot = False
 forward_serial = False
+forward_serial_hosts = None
 
 MAX_START_ATTEMPTS = 3
 TESTBED_PATH = "/usr/testbed"
@@ -261,6 +262,8 @@ def load_job_variables(user, job_id):
     hosts_path = os.path.join(job_dir, "hosts")
     # get serial forwarding configuration
     forward_serial = os.path.isfile(os.path.join(job_dir, ".forward-serial"))
+    if not forward_serial:
+        forward_serial = os.path.exists(os.path.join(job_dir, "forward_serial_hosts"))
     # get path to the duration file
     # duration_path = os.path.join(job_dir, "duration")
     duration = file_read(os.path.join(job_dir, "duration"))
@@ -268,7 +271,7 @@ def load_job_variables(user, job_id):
         duration = int(duration)
 
 
-def create(name, platform, hosts, copy_from, do_start, duration, metadata, post_processing):
+def create(name, platform, hosts, copy_from, do_start, duration, metadata, post_processing, forward_serial_hosts):
     """Create a new job with given name, platform, hosts, source-directory to copy from. Start it, if 'do_start' is true, set a max duration,
        set metadata and set a post-processing script.
     """
@@ -295,6 +298,11 @@ def create(name, platform, hosts, copy_from, do_start, duration, metadata, post_
     # check if host file exists
     if not os.path.isfile(hosts):
         print("Host file %s not found!" % (hosts))
+        do_quit(1)
+
+    #check if forward serial host file exist
+    if forward_serial_hosts and not os.path.isfile(forward_serial_hosts):
+        print("Forward serial host file %s not found!" % (forward_serial_hosts))
         do_quit(1)
 
     # if platform is not set, take it from copy-from or use "noplatform"
@@ -393,6 +401,16 @@ def create(name, platform, hosts, copy_from, do_start, duration, metadata, post_
     except OSError as e:
         print("Failed to copy host file %s to %s" %
               (hosts, os.path.join(job_dir, "hosts")))
+        print(e)
+        do_quit(1)
+    # create forward serial host file in job directory
+    try:
+        new_serial_host_file = os.path.join(job_dir, "forward_serial_hosts")
+        shutil.copyfile(forward_serial_hosts, new_serial_host_file)
+        file_set_group_permission(new_serial_host_file)
+    except OSError as e:
+        print("Failed to copy host file %s to %s" %
+              (forward_serial_hosts, os.path.join(job_dir, "forward_serial_hosts")))
         print(e)
         do_quit(1)
     # create platform file in job directory
@@ -720,41 +738,41 @@ def usage():
     print("Usage: $testbed.py command [--parameter value]")
     print()
     print("Commands:")
-    print("create             'create a job for future use'")
-    print("start              'start a job'")
-    print("download           'download the current job's logs'")
-    print("stop               'stop the current job and download its logs'")
+    print("create                  'create a job for future use'")
+    print("start                   'start a job'")
+    print("download                'download the current job's logs'")
+    print("stop                    'stop the current job and download its logs'")
     print()
-    print("status             'show status of the currently active job'")
-    print("list               'list all your jobs'")
+    print("status                  'show status of the currently active job'")
+    print("list                    'list all your jobs'")
     print()
-    print("reboot             'reboot the PI nodes (for maintenance purposes -- use with care)'")
+    print("reboot                  'reboot the PI nodes (for maintenance purposes -- use with care)'")
     print()
     print("Usage of create:")
     print(
         " $ testbed.py create [--copy-from PATH] [--name NAME] [--platform PLATFORM] [--hosts HOSTS] [--start]")
-    print("--copy-from        'initialize job directory with content from PATH (if PATH is a directory) or with file PATH (otherwise)'")
-    print("--name             'set the job name (no spaces)'")
-    print("--platform         'set a platform for the job (must be a folder in %s)'" %
-          (TESTBED_SCRIPTS_PATH))
-    print("--duration         'job duration in minutes (optional). If set, the next job will start automatically after the end of the current.'")
-    print("--hosts            'set the hostfile containing all PI host involved in the job'")
-    print("--start            'start the job immediately after creating it'")
-    print("--metadata         'copy any metadata file to job directory'")
-    print("--post-processing  'call a given post-processing script at the end of the run'")
-    print("--nested           'set this if calling from a script that already took the lock'")
-    print("--with-reboot      'reboot the raspberry PIs if the job creation fails'")
-    print("--forward-serial   'Forwards the serial line data into a TCP socket (tcp://raspi:50000)'")
+    print("--copy-from             'initialize job directory with content from PATH (if PATH is a directory) or with file PATH (otherwise)'")
+    print("--name                  'set the job name (no spaces)'")
+    print("--platform              'set a platform for the job (must be a folder in %s)'" %(TESTBED_SCRIPTS_PATH))
+    print("--duration              'job duration in minutes (optional). If set, the next job will start automatically after the end of the current.'")
+    print("--hosts                 'set the hostfile containing all PI host involved in the job'")
+    print("--start                 'start the job immediately after creating it'")
+    print("--metadata              'copy any metadata file to job directory'")
+    print("--post-processing       'call a given post-processing script at the end of the run'")
+    print("--nested                'set this if calling from a script that already took the lock'")
+    print("--with-reboot           'reboot the raspberry PIs if the job creation fails'")
+    print("--forward-serial        'forwards the serial line data into a TCP socket (tcp://raspi:50000)'")
+    print("--forward-serial-hosts  'set the serial host file containing all PI host forwarding the serial line data into a TCP socket (tcp://raspi:50000)'")
     print()
     print("Usage of start:")
     print(" $ testbed.py start [--job-id ID]")
-    print("--job-id           'the unique job id (obtained at creation). If not set, start next job.'")
+    print("--job-id                'the unique job id (obtained at creation). If not set, start next job.'")
     print()
     print("Usage of stop:")
     print(" $ testbed.py stop [--force] [--no-download]")
-    print("--force            'stop the job even if uninstall scripts fail'")
-    print("--no-download      'do not download the logs before stopping'")
-    print("--start-next       'start next job after stopping the current'")
+    print("--force                 'stop the job even if uninstall scripts fail'")
+    print("--no-download           'do not download the logs before stopping'")
+    print("--start-next            'start next job after stopping the current'")
     print()
     print("Usage of status, list, download, stop, reboot:")
     print("These commands use no parameter.")
@@ -783,7 +801,7 @@ if __name__ == "__main__":
         # Try to fettch arguments
         try:
             opts, args = getopt.getopt(sys.argv[2:], "", ["name=", "platform=", "hosts=", "copy-from=", "duration=", "job-id=", "start",
-                                                          "force", "no-download", "start-next", "metadata=", "post-processing=", "nested", "with-reboot", "forward-serial"])
+                                                          "force", "no-download", "start-next", "metadata=", "post-processing=", "nested", "with-reboot", "forward-serial", "forward-serial-hosts="])
         except getopt.GetoptError as e:
             print(e)
             usage()
@@ -826,6 +844,8 @@ if __name__ == "__main__":
                 force_reboot = True
             elif opt == "--forward-serial":
                 forward_serial = True
+            elif opt == "--forward-serial-hosts":
+                forward_serial_hosts = os.path.normpath(value)
 
         if not is_nested and lock_is_taken():
             print("Lock is taken. Try a gain in a few seconds/minutes.")
@@ -835,7 +855,7 @@ if __name__ == "__main__":
 
         if command == "create":
             create(name, platform, hosts, copy_from, do_start,
-                   duration, metadata, post_processing)
+                   duration, metadata, post_processing, forward_serial_hosts)
         elif command == "status":
             status()
         elif command == "list":
