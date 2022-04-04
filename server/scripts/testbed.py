@@ -404,15 +404,16 @@ def create(name, platform, hosts, copy_from, do_start, duration, metadata, post_
         print(e)
         do_quit(1)
     # create forward serial host file in job directory
-    try:
-        new_serial_host_file = os.path.join(job_dir, "forward_serial_hosts")
-        shutil.copyfile(forward_serial_hosts, new_serial_host_file)
-        file_set_group_permission(new_serial_host_file)
-    except OSError as e:
-        print("Failed to copy host file %s to %s" %
-              (forward_serial_hosts, os.path.join(job_dir, "forward_serial_hosts")))
-        print(e)
-        do_quit(1)
+    if forward_serial_hosts:
+        try:
+            new_serial_host_file = os.path.join(job_dir, "forward_serial_hosts")
+            shutil.copyfile(forward_serial_hosts, new_serial_host_file)
+            file_set_group_permission(new_serial_host_file)
+        except OSError as e:
+            print("Failed to copy host file %s to %s" %
+                (forward_serial_hosts, os.path.join(job_dir, "forward_serial_hosts")))
+            print(e)
+            do_quit(1)
     # create platform file in job directory
     file_write(os.path.join(job_dir, "platform"), platform + "\n")
     if duration != None:
