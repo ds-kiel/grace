@@ -119,7 +119,8 @@ typedef struct tracing_instance {
 } tracing_instance_t;
 
 /* --- proto --- */
-int tracing_init(tracing_instance_t *process, output_module_t *output);
+tracing_instance_t* tracing_init(output_module_t *output);
+int tracing_deinit(tracing_instance_t *process);
 int tracing_start(tracing_instance_t *process, struct channel_configuration chan_conf);
 int tracing_stop(tracing_instance_t *process);
 void tracing_handle_events(tracing_instance_t *process);

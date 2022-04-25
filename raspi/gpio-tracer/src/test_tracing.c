@@ -47,12 +47,10 @@ int main(int argc, char *argv[]) {
 
   signal(SIGINT, intHandler);
 
-  tracing_task = malloc(sizeof(tracing_instance_t));
-
   chunked_output = chunked_output_new();
   chunked_output_init(chunked_output, argv[1]);
 
-  tracing_init(tracing_task, (output_module_t*) chunked_output);
+  tracing_task = tracing_init((output_module_t*) chunked_output);
 
   tracing_start(tracing_task, chan_conf);
 
@@ -63,6 +61,8 @@ int main(int argc, char *argv[]) {
   print_free_running_clock_time(tracing_task);
 
   tracing_stop(tracing_task);
+
+  tracing_deinit(tracing_task);
 
   sleep(4);
 

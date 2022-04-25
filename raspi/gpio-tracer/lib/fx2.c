@@ -63,6 +63,7 @@ int fx2_init_manager(struct fx2_device_manager *manager_instc) {
   }
 
   manager_instc->active_bulk_transfers = NULL;
+  manager_instc->finished_bulk_transfers = NULL;
 
   return 0;
 }

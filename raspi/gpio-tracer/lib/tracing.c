@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <string.h>
 #include <tracing.h>
 #include <fx2.h>
 
@@ -513,14 +514,15 @@ int tracing_stop(tracing_instance_t *process) {
   return 0;
 }
 
-int tracing_init(tracing_instance_t *process, output_module_t *output) {
+tracing_instance_t* tracing_init(output_module_t *output) {
   int ret;
-  struct fx2_device_manager *manager = &process->fx2_manager;
+  tracing_instance_t *process;    
+  struct fx2_device_manager *manager;
 
-  if(process->state == RUNNING) {
-    g_printf("Instance already running!\n");
-    return 1;
-  }
+  process = malloc(sizeof(tracing_instance_t));
+  memset(process, 0, sizeof(tracing_instance_t));
+
+  manager = &process->fx2_manager;  
 
   process->current_freq = FREQ_24000000;
 
@@ -535,16 +537,7 @@ int tracing_init(tracing_instance_t *process, output_module_t *output) {
 
   fx2_get_status(manager);
 
-  unsigned char data[2];
-
-  // check status
-  // TODO this should be moved into fx2.c. Control commands etc. should only be send if the device is in a good known state
-  send_control_command(manager,
-                       LIBUSB_RECIPIENT_DEVICE | LIBUSB_REQUEST_TYPE_STANDARD |
-                           LIBUSB_REQUEST_DIR_IN,
-                       LIBUSB_REQUEST_GET_STATUS, 0, 0, data, 2);
-
-  g_message("Status: %x", data[0] << 8 | data[1]);
+  sleep(1);
 
   __download_tracer_firmware(process, TMP_FIRMWARE_LOCATION);
   sleep(1);
@@ -559,6 +552,16 @@ int tracing_init(tracing_instance_t *process, output_module_t *output) {
 #endif
   
   process->output = output;
+
+  return process;
+}
+
+int tracing_deinit(tracing_instance_t *process) {
+  free(process);
+  
+#ifdef WITH_TIMESYNC
+  radio_deinit();
+#endif
 
   return 0;
 }
@@ -582,7 +585,5 @@ void tracing_handle_events(tracing_instance_t *process) {
 #endif        
 
     process->state = RUNNING;
-
-    
   }
 }

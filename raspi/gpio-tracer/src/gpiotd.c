@@ -66,20 +66,13 @@ static int start_tasks(struct channel_configuration chan_conf) {
     }
   }
 
-  tracing_task = malloc(sizeof(tracing_instance_t));
   chunked_output = chunked_output_new();
 
   if ((ret = chunked_output_init(chunked_output, trace_path))) {
-    #ifdef WITH_TIMESYNC
-    radio_deinit();
-    #endif
     return -1;
   }
-
-  if ((ret = tracing_init(tracing_task, (output_module_t*) chunked_output))) {
-    #ifdef WITH_TIMESYNC
-    radio_deinit();
-    #endif
+ 
+  if ((tracing_task = tracing_init((output_module_t*) chunked_output)) == NULL) {
     chunked_output_deinit(chunked_output);
     return -1;
   }
@@ -88,21 +81,13 @@ static int start_tasks(struct channel_configuration chan_conf) {
 
   tracing_start(tracing_task, chan_conf);
 
-  // start thread
-  #ifdef WITH_TIMESYNC
-  radio_start_reception();
-  #endif
-
   return 0;
 }
 
 static int stop_tasks() {
   tracing_stop(tracing_task);
-
-  #ifdef WITH_TIMESYNC
-  radio_deinit();
-  #endif
-
+  tracing_deinit(tracing_task);
+  
   chunked_output_deinit(chunked_output);
 
   return 0;
@@ -135,9 +120,9 @@ static void handle_method_call(GDBusConnection *connnection,
       .ch5 = SAMPLE_ALL,
       .ch6 = SAMPLE_ALL,
       .ch7 = SAMPLE_ALL,
-      .ch8 = SAMPLE_RADIO | SAMPLE_ALL,
+      .ch8 = SAMPLE_RADIO,
     };
-
+    
     if ((ret = start_tasks(chan_conf)) < 0) {
       result = g_strdup_printf("unable to start instance");
     } else if (ret > 0) {
@@ -237,7 +222,11 @@ int main(int argc, char *argv[])
   /* owner_id = g_bus_own_name(G_BUS_TYPE_SESSION, "org.cau.gpiot", flags, on_bus_acquired, on_name_acquired, on_name_lost, NULL, NULL);   */
 
   while (1) { // TODO main loop
-    g_main_context_iteration(main_context, TRUE);
+    g_main_context_iteration(main_context, FALSE);
+    
+    if(tracing_task != NULL) {
+      tracing_handle_events(tracing_task);
+    }
   }
 
   // ------ destruction ------
