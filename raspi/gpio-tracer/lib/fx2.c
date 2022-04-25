@@ -1,5 +1,5 @@
 #include "libusb.h"
-#include <bits/types/struct_timeval.h>
+#include <sys/time.h>
 #include <fx2.h>
 #include <glib.h>
 #include <stdio.h>

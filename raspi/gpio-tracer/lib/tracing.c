@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <tracing.h>
 #include <fx2.h>
 
@@ -24,19 +25,21 @@
 
 #define NEW_ESTIMATE_WEIGHT 0.90
 
-int __tracing_fw_send_start_cmd(struct fx2_device_manager *manager_instc);
-int __tracing_fw_send_stop_cmd(struct fx2_device_manager *manager_instc);
-int __tracing_fw_hand_off_ctrl(struct fx2_device_manager *manager_instc);
-int __tracing_fw_stat(struct fx2_device_manager *manager_instc);
-int __tracing_fw_set_frequency(struct fx2_device_manager *manager, enum tracer_frequencies);
-enum tracer_frequencies __tracing_fw_get_frequency(struct fx2_device_manager *manager);
+int fw_send_start_cmd(struct fx2_device_manager *manager_instc);
+int fw_send_stop_cmd(struct fx2_device_manager *manager_instc);
+int tracing_fw_renumerate(struct fx2_device_manager *manager_instc);
+int fw_stat(struct fx2_device_manager *manager_instc);
+int fw_set_frequency(struct fx2_device_manager *manager, enum tracer_frequencies);
+enum tracer_frequencies fw_get_frequency(struct fx2_device_manager *manager);
 
 /* #define G_LOG_DOMAIN "TRACING" */
 
 guint64 accumulator;
 guint64 seconds;
 
-void init_clock(tracing_instance_t* process, guint64 frequency) {
+void init_clock(tracing_instance_t *process) {
+  uint32_t frequency = 48000000 / (process->current_freq+1);
+
   process->local_clock.nom_seq = frequency;
   process->local_clock.freq = 0;
   process->local_clock.state = WAIT;
@@ -52,6 +55,13 @@ void init_clock(tracing_instance_t* process, guint64 frequency) {
 
   g_message("nominal frequency: %" G_GUINT64_FORMAT, process->local_clock.nom_frequency);
   g_message("adjusted frequency: %" G_GUINT64_FORMAT, process->local_clock.adjusted_frequency);
+}
+
+void update_clock_frequency(tracing_instance_t *process) {
+  uint32_t frequency = 48000000 / (process->current_freq+1);
+
+  process->local_clock.nom_seq = frequency;
+  process->local_clock.nom_frequency = TICKS_PER_SECOND / frequency;
 }
 
 void tick(tracing_instance_t *process) {
@@ -139,6 +149,8 @@ static void handle_time_ref_signal(tracing_instance_t *process) {
         g_message("local seconds %" G_GUINT64_FORMAT, seconds);
         g_message("reference seconds %" G_GUINT64_FORMAT, ref_time);
       }
+
+      g_message("free seq %llu", process->local_clock.free_seq);
 
       clk->offset_adj = clk->offset / (clk->nom_seq);
       clk->free_seq = 0;
@@ -232,18 +244,21 @@ void tracer_datastream_finished_callback(void *user_data) {
   if(process->state == RUNNING) {
     g_message("data stream stopped unexpectedly. Try to reduce sampling rate");
 
-    __tracing_fw_send_stop_cmd(&process->fx2_manager);
+    fw_send_stop_cmd(&process->fx2_manager);
 
     // the lowest possible frequency that we allow is 1MHz
     if (process->current_freq < FREQ_1000000) {
       process->current_freq++;
-      __tracing_fw_set_frequency(&process->fx2_manager, process->current_freq);
 
-      assert(__tracing_fw_get_frequency(&process->fx2_manager) == process->current_freq);
+      fw_set_frequency(&process->fx2_manager, process->current_freq);
+
+      init_clock(process);
+
+      assert(fw_get_frequency(&process->fx2_manager) == process->current_freq);
 
       fx2_submit_bulk_out_transfer(&process->fx2_manager, &process->transfer_cnfg);
 
-      __tracing_fw_send_start_cmd(&process->fx2_manager);
+      fw_send_start_cmd(&process->fx2_manager);
     } else {
       g_message("Can't lower frequency any more. Stopping");
     }
@@ -252,7 +267,7 @@ void tracer_datastream_finished_callback(void *user_data) {
   }
 }
 
-int __tracing_fw_set_frequency(struct fx2_device_manager *manager, enum tracer_frequencies frequency) {
+int fw_set_frequency(struct fx2_device_manager *manager, enum tracer_frequencies frequency) {
   int ret;
   unsigned char data[1] = { frequency };
 
@@ -264,19 +279,19 @@ int __tracing_fw_set_frequency(struct fx2_device_manager *manager, enum tracer_f
     return -1;
   }
 
-    g_message("Successfully set tracer sampling frequency");
+  g_message("Successfully set tracer sampling delay to %d ", data[0]);
 
   return 0;
 }
 
-enum tracer_frequencies __tracing_fw_get_frequency(struct fx2_device_manager *manager) {
+enum tracer_frequencies fw_get_frequency(struct fx2_device_manager *manager) {
   int ret;
   unsigned char read[1];
 
   if ((ret = send_control_command(
                                   manager,
                                   LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_REQUEST_DIR_IN,
-                                  VC_SET_DELAY, 0x00, 0, read, sizeof(read))) < 0) {
+                                  VC_GET_DELAY, 0x00, 0, read, sizeof(read))) < 0) {
     g_error("could not get tracer sampling frequency:");
     return -1;
   }
@@ -300,7 +315,7 @@ gboolean tracing_running(tracing_instance_t* process) {
 
 }
 
-int __tracing_fw_send_start_cmd(struct fx2_device_manager *manager_instc) {
+int fw_send_start_cmd(struct fx2_device_manager *manager_instc) {
   int ret;
   if ((ret = send_control_command(
                                   manager_instc,
@@ -315,7 +330,7 @@ int __tracing_fw_send_start_cmd(struct fx2_device_manager *manager_instc) {
   return 0;
 }
 
-int __tracing_fw_send_stop_cmd(struct fx2_device_manager *manager_instc) { /*  */
+int fw_send_stop_cmd(struct fx2_device_manager *manager_instc) { /*  */
   int ret;
   g_message("send stop sampling command to device");
 
@@ -334,7 +349,7 @@ int __tracing_fw_send_stop_cmd(struct fx2_device_manager *manager_instc) { /*  *
 // this is done as (hopefully) working around a problem where sometimes
 // the fx2 stops enumerating after conclusion of a test run (the testbed script toggles
 // of the power of the integrated raspberry usb-hub).
-int __tracing_fw_hand_off_ctrl(struct fx2_device_manager *manager_instc) {
+int tracing_fw_renumerate(struct fx2_device_manager *manager_instc) {
   int ret;
   g_message("hand back USB request control to fx2 default USB device");
 
@@ -385,7 +400,7 @@ int __download_tracer_firmware(tracing_instance_t *process, char* firmware_path)
   fx2_cpu_unset_reset(manager);
 }
 
-int __tracing_fw_stat(struct fx2_device_manager *manager_instc) {
+int fw_stat(struct fx2_device_manager *manager_instc) {
   int ret;
   unsigned char data[1];
   if ((ret = send_control_command(
@@ -438,15 +453,15 @@ int tracing_start(tracing_instance_t *process, struct channel_configuration chan
     fx2_reset_device(manager);
   }
 
-  __tracing_fw_stat(manager);
+  fw_stat(manager);
 
   sleep(2);
 
-  __tracing_fw_set_frequency(manager, process->current_freq);
+  fw_set_frequency(manager, process->current_freq);
 
-  assert(__tracing_fw_get_frequency(manager) == process->current_freq);
+  assert(fw_get_frequency(manager) == process->current_freq);
 
-  fx2_create_bulk_transfer(manager, transfer_cnfg, 20, (1 << 17));
+  fx2_create_bulk_transfer(manager, transfer_cnfg, 20, (1 << 18));
 
   fx2_set_bulk_transfer_packet_callback(transfer_cnfg, &data_feed_callback, (void *) process);
 
@@ -454,7 +469,7 @@ int tracing_start(tracing_instance_t *process, struct channel_configuration chan
 
   fx2_submit_bulk_out_transfer(manager, transfer_cnfg);
 
-  __tracing_fw_send_start_cmd(manager);
+  fw_send_start_cmd(manager);
 
   process->state = RUNNING;
 
@@ -487,9 +502,9 @@ int tracing_start(tracing_instance_t *process, struct channel_configuration chan
 int tracing_stop(tracing_instance_t *process) {
   int ret;
 
-  __tracing_fw_send_stop_cmd(&process->fx2_manager);
+  fw_send_stop_cmd(&process->fx2_manager);
 
-  __tracing_fw_hand_off_ctrl(&process->fx2_manager);
+  tracing_fw_renumerate(&process->fx2_manager);
 
   fx2_stop_bulk_out_transfer(&process->transfer_cnfg);
 
@@ -514,8 +529,7 @@ int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQue
   process->current_freq = FREQ_24000000;
 
   /* // initialize local clock */
-  init_clock(process, ANALYZER_FREQUENCY);
-
+  init_clock(process);
 
   // enumerate candidate device
   fx2_init_manager(manager);

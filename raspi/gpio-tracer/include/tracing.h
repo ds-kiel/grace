@@ -6,8 +6,6 @@
 #include <types.h>
 #include <fx2.h>
 
-#define ANALYZER_FREQUENCY 8000000
-
 typedef enum clock_state {
   WAIT, // wait for reference signal
   OFFSET, // clock has received at least one reference signal
@@ -34,6 +32,7 @@ enum TRACER_VENDOR_COMMANDS {
   VC_STOP_SAMP,
   VC_RENUM,
   VC_SET_DELAY,
+  VC_GET_DELAY,
 };
 
 enum tracer_frequencies {
@@ -42,6 +41,10 @@ enum tracer_frequencies {
   FREQ_12000000,
   FREQ_9600000,
   FREQ_8000000,
+  FREQ_6800000,
+  FREQ_6000000,
+  FREQ_4800000,
+  FREQ_4300000,
   FREQ_4000000,
   FREQ_2000000,
   FREQ_1000000
