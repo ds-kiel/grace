@@ -28,9 +28,10 @@
 int fw_send_start_cmd(struct fx2_device_manager *manager_instc);
 int fw_send_stop_cmd(struct fx2_device_manager *manager_instc);
 int tracing_fw_renumerate(struct fx2_device_manager *manager_instc);
-int fw_stat(struct fx2_device_manager *manager_instc);
+int fw_status(struct fx2_device_manager *manager_instc, enum tracer_status_codes *status);
 int fw_set_frequency(struct fx2_device_manager *manager, enum tracer_frequencies);
 enum tracer_frequencies fw_get_frequency(struct fx2_device_manager *manager);
+int firmware_wait(struct fx2_device_manager *manager_instc, enum tracer_status_codes code);
 
 /* #define G_LOG_DOMAIN "TRACING" */
 
@@ -65,7 +66,6 @@ void update_clock_frequency(tracing_instance_t *process) {
 }
 
 void tick(tracing_instance_t *process) {
-  static int seq_cnt = 0;
   struct lclock *clk = &(process->local_clock);
 
   if ((clk->state > WAIT)) {
@@ -98,14 +98,9 @@ void print_free_running_clock_time(tracing_instance_t *process) {
 
 // time reference signal handling
 #ifdef WITH_TIMESYNC
-static void handle_time_ref_signal(tracing_instance_t *process) {
+void handle_time_ref_signal(tracing_instance_t *process) {
   struct lclock *clk = &(process->local_clock);
   guint64 ref_time;
-
-  /* g_async_queue_push(process->timestamp_unref_queue, ref_time); */
-
-  // read data from process
-  /* ref_time = g_async_queue_pop(process->timestamp_ref_queue); */
 
   ref_time = radio_retrieve_timestamp();
 
@@ -175,7 +170,7 @@ default:
 #endif
 
 // GPIO signal handling
-static inline void handle_gpio_signal(tracing_instance_t *process, guint8 state, guint8 channel) {
+void handle_gpio_signal(tracing_instance_t *process, guint8 state, guint8 channel) {
   /* struct trace *trace = malloc(sizeof(struct trace)); */
 #ifdef WITH_TIMESYNC
   if(process->local_clock.state==FREQ) {
@@ -195,20 +190,17 @@ static inline void handle_gpio_signal(tracing_instance_t *process, guint8 state,
 }
 
 void data_feed_callback(uint8_t *packet_data, int length, void *user_data) {
-  static gboolean initial_df_logic_packet = TRUE;
-  static guint8 last;
   tracing_instance_t *process = (tracing_instance_t*)user_data;
 
-  if(initial_df_logic_packet) {
-    last = packet_data[0];
-    initial_df_logic_packet = FALSE;
+  if(process->local_clock.free_seq_cont == 0) {
+    process->prev_sample = packet_data[0];
   }
 
   for(int i = 0; i < length; i++) {
     guint8 curr = packet_data[i];
 
-    if(curr != last) {
-      guint8 changed = (last^curr) & process->active_channels_mask;
+    if(curr != process->prev_sample) {
+      guint8 changed = (process->prev_sample^curr) & process->active_channels_mask;
       guint8 state;
 
       if(changed) {
@@ -223,7 +215,7 @@ void data_feed_callback(uint8_t *packet_data, int length, void *user_data) {
             }
 #endif
 
-            if((mode & SAMPLE_FALLING) && (last & channel_mask)) { // falling signal
+            if((mode & SAMPLE_FALLING) && (process->prev_sample & channel_mask)) { // falling signal
               state = 0;
             } else if (mode & SAMPLE_RISING) {  // rising signal
               state = 1;
@@ -234,7 +226,7 @@ void data_feed_callback(uint8_t *packet_data, int length, void *user_data) {
         }
       }
     }
-    last = curr;
+    process->prev_sample = curr;
     tick(process);
   }
 }
@@ -244,27 +236,27 @@ void tracer_datastream_finished_callback(void *user_data) {
   if(process->state == RUNNING) {
     g_message("data stream stopped unexpectedly. Try to reduce sampling rate");
 
-    fw_send_stop_cmd(&process->fx2_manager);
-
-    // the lowest possible frequency that we allow is 1MHz
-    if (process->current_freq < FREQ_1000000) {
-      process->current_freq++;
-
-      fw_set_frequency(&process->fx2_manager, process->current_freq);
-
-      init_clock(process);
-
-      assert(fw_get_frequency(&process->fx2_manager) == process->current_freq);
-
-      fx2_submit_bulk_out_transfer(&process->fx2_manager, &process->transfer_cnfg);
-
-      fw_send_start_cmd(&process->fx2_manager);
-    } else {
-      g_message("Can't lower frequency any more. Stopping");
-    }
-
-
+    process->state = REDUCE_RATE;
   }
+}
+
+void firmware_reduce_frequency(tracing_instance_t *process) {
+  fw_send_stop_cmd(&process->fx2_manager);
+
+  firmware_wait(&process->fx2_manager, TRACER_GPIF_STOPPED);
+
+  // the lowest possible frequency that we allow is 1MHz
+  if (process->current_freq < FREQ_1000000) {
+    process->current_freq++;
+
+    fw_set_frequency(&process->fx2_manager, process->current_freq);
+
+    init_clock(process);
+
+    assert(fw_get_frequency(&process->fx2_manager) == process->current_freq);
+  } else {
+    g_message("Can't lower frequency any more. Stopping");
+  }  
 }
 
 int fw_set_frequency(struct fx2_device_manager *manager, enum tracer_frequencies frequency) {
@@ -400,7 +392,7 @@ int __download_tracer_firmware(tracing_instance_t *process, char* firmware_path)
   fx2_cpu_unset_reset(manager);
 }
 
-int fw_stat(struct fx2_device_manager *manager_instc) {
+int fw_status(struct fx2_device_manager *manager_instc, enum tracer_status_codes *status) {
   int ret;
   unsigned char data[1];
   if ((ret = send_control_command(
@@ -413,16 +405,40 @@ int fw_stat(struct fx2_device_manager *manager_instc) {
 
   g_message("firmware responded with status code: %d", data[0]);
 
+  *status = (enum tracer_status_codes) data[0];
+
+  return 0;
+}
+
+int firmware_wait(struct fx2_device_manager *manager_instc, enum tracer_status_codes code) {
+  int retry;
+  enum tracer_status_codes status;
+  
+  g_message("waiting for firmware");
+
+  retry = 0;
+  do {
+    fw_status(manager_instc, &status);
+    printf(".");
+    sleep(1); 
+  } while(status != code && retry++ < 4);
+  printf("\n");
+
+  if (retry >= 4) {
+    g_message("firmware error");
+    return -1;
+  }
+
   return 0;
 }
 
 
 // TODO pass from higher layer
 #define TMP_FIRMWARE_LOCATION "../firmware/fx2/build/fx2-tracer.bix"
-/* #define TMP_FIRMWARE_LOCATION "/usr/testbed/gpio-tracer2/gpio-tracer/firmware/build/fx2-tracer.bix" */
 int tracing_start(tracing_instance_t *process, struct channel_configuration channel_conf) {
   struct fx2_device_manager *manager = &process->fx2_manager;
   struct fx2_bulk_transfer_config *transfer_cnfg = &process->transfer_cnfg;
+  enum tracer_status_codes tracer_state;
 
   process->chan_conf.conf = channel_conf;
 
@@ -436,68 +452,48 @@ int tracing_start(tracing_instance_t *process, struct channel_configuration chan
 
   fx2_open_device(manager);
 
-  unsigned char retry_count = 0;
-  while (retry_count++ < 10) {
-    if(  fx2_get_status(manager) >= 0  ) {
-      break;
-    }
+  /* unsigned char retry_count = 0; */
+  /* while (retry_count++ < 10) { */
+  /*   if(  fx2_get_status(manager) >= 0  ) { */
+  /*     break; */
+  /*   } */
 
-    fx2_close_device(manager);
+  /*   fx2_close_device(manager); */
 
-    sleep(5);
+  /*   sleep(5); */
 
-    fx2_open_device(manager);
+  /*   fx2_open_device(manager); */
 
-    sleep(1);
+  /*   sleep(1); */
 
-    fx2_reset_device(manager);
-  }
+  /*   fx2_reset_device(manager); */
+  /* } */
 
-  fw_stat(manager);
+  firmware_wait(&process->fx2_manager, TRACER_GPIF_STOPPED);
 
-  sleep(2);
+  sleep(1);
 
   fw_set_frequency(manager, process->current_freq);
 
   assert(fw_get_frequency(manager) == process->current_freq);
 
   fx2_create_bulk_transfer(manager, transfer_cnfg, 20, (1 << 18));
-
   fx2_set_bulk_transfer_packet_callback(transfer_cnfg, &data_feed_callback, (void *) process);
-
   fx2_set_bulk_transfer_finished_callback(transfer_cnfg, &tracer_datastream_finished_callback, (void *) process);
-
   fx2_submit_bulk_out_transfer(manager, transfer_cnfg);
 
   fw_send_start_cmd(manager);
+
+  /* firmware_wait(&process->fx2_manager, TRACER_GPIF_RUNNING); */
+
+  #ifdef WITH_TIMESYNC
+  radio_start_reception();
+  #endif
 
   process->state = RUNNING;
 
   return 0;
 }
-
-/* /\* */
-/*  * Function: tracing_tracer_get_status */
-/*  * ---------------------------- */
-/*  *   returns: status code of tracing hardware */
-/*  * */
-/*  *   process: structure holding tracing instance data */
-/*  *\/ */
-/* enum tracer_status_codes tracing_tracer_get_status(struct fx2_device_manager *manager_instc) { */
-/*   int ret; */
-/*   unsigned char read[1]; */
-/*   if ((ret = send_control_command( */
-/*                                   manager_instc, */
-/*                                   LIBUSB_REQUEST_TYPE_VENDOR, */
-/*                                   VC_GET_STATUS, 0x00, 0, read, sizeof(read))) < 0) { */
-/*     g_error("could not read tracer status"); */
-/*     return -1; */
-/*   } */
-
-/*   g_message("Got tracer status 0x%x", read[0]); */
-
-/*   return read[0]; */
-/* } */
 
 int tracing_stop(tracing_instance_t *process) {
   int ret;
@@ -517,7 +513,7 @@ int tracing_stop(tracing_instance_t *process) {
   return 0;
 }
 
-int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue) {
+int tracing_init(tracing_instance_t *process, output_module_t *output) {
   int ret;
   struct fx2_device_manager *manager = &process->fx2_manager;
 
@@ -533,6 +529,7 @@ int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQue
 
   // enumerate candidate device
   fx2_init_manager(manager);
+  
   fx2_find_devices(manager);
   fx2_open_device(manager);
 
@@ -554,11 +551,38 @@ int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQue
 
   fx2_close_device(manager);
   sleep(2);
+  
+#ifdef WITH_TIMESYNC
+  g_message("Time synchronization enabled");
 
-  /* // set queue */
-  process->timestamp_unref_queue = timestamp_unref_queue;
-  process->timestamp_ref_queue = timestamp_ref_queue;
+  radio_init();
+#endif
+  
   process->output = output;
 
   return 0;
+}
+
+void tracing_handle_events(tracing_instance_t *process) {
+  fx2_handle_events(&process->fx2_manager);
+
+  if(process->state == REDUCE_RATE) {
+    firmware_reduce_frequency(process);
+    
+    fx2_submit_bulk_out_transfer(&process->fx2_manager, &process->transfer_cnfg);
+
+#ifdef WITH_TIMESYNC
+    radio_init();
+#endif    
+
+    fw_send_start_cmd(&process->fx2_manager);
+    
+#ifdef WITH_TIMESYNC
+    radio_start_reception();
+#endif        
+
+    process->state = RUNNING;
+
+    
+  }
 }

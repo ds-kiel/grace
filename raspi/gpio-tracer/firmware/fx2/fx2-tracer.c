@@ -54,9 +54,8 @@
 
 enum tracer_status_codes {
   TRACER_GPIF_SETUP = 0x00,
-  TRACER_GPIF_READY = 0x01,
-  TRACER_GPIF_STOPPED = 0x02,
-  TRACER_GPIF_RUNNING = 0x03,
+  TRACER_GPIF_STOPPED = 0x01,
+  TRACER_GPIF_RUNNING = 0x02,
 };
 
 void set_gpif_delay(unsigned char delay);
@@ -166,11 +165,7 @@ char gpif_abort_transaction() {
   SYNCDELAY;
   RESETFIFO(0x02);
   SYNCDELAY;
-
-  if(gpif_poll_finished()) {
-    tracer_state = TRACER_GPIF_STOPPED;
-  }
-
+  
   return 0;
 }
 
@@ -234,7 +229,7 @@ char gpif_start_sampling() {
 
   _gpif_init();
 
- // the programmed waveform loops indefinitely, until it is manually stopped or a FIFO overflow occurs.
+  // the programmed waveform loops indefinitely, until it is manually stopped or a FIFO overflow occurs.
   gpif_set_tc16(1);
 
   gpif_fifo_read(GPIF_EP2);
@@ -263,7 +258,7 @@ void main() {
   static unsigned char read_data[1];
   static unsigned char cnt = 0;
 
-  tracer_state = TRACER_GPIF_READY;
+  tracer_state = TRACER_GPIF_STOPPED;
   while(TRUE) {
     SYNCDELAY16;
 
@@ -272,6 +267,9 @@ void main() {
       handle_setupdata();
       got_sud=FALSE;
     }
+
+    // tracer_state directly represents state of GPIF
+    tracer_state = gpif_poll_finished() ? TRACER_GPIF_STOPPED : TRACER_GPIF_RUNNING;
   }
 }
 
@@ -328,7 +326,6 @@ BOOL handle_vendorcommand(BYTE cmd) {
     {
       debug_printf("stop sampling\n");
       gpif_abort_transaction();
-      SYNCDELAY; SYNCDELAY; SYNCDELAY; SYNCDELAY; SYNCDELAY; SYNCDELAY;
 
       return TRUE;
     }

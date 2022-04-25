@@ -14,6 +14,7 @@ typedef enum clock_state {
 
 typedef enum process_state {
   STOPPED,
+  REDUCE_RATE,
   RUNNING,
 } process_state_t;
 
@@ -52,9 +53,8 @@ enum tracer_frequencies {
 
 enum tracer_status_codes {
   TRACER_GPIF_SETUP = 0x00,
-  TRACER_GPIF_READY = 0x01,
-  TRACER_GPIF_STOPPED = 0x02,
-  TRACER_GPIF_RUNNING = 0x03,
+  TRACER_GPIF_STOPPED = 0x01,
+  TRACER_GPIF_RUNNING = 0x02,
 };
 
 
@@ -107,10 +107,6 @@ typedef struct tracing_instance {
   char active_channels_mask;
   union __channel_configuration chan_conf;
 
-  GAsyncQueue *trace_queue;
-  GAsyncQueue *timestamp_unref_queue;
-  GAsyncQueue *timestamp_ref_queue;
-
   output_module_t *output;
 
   struct fx2_device_manager fx2_manager;
@@ -118,12 +114,15 @@ typedef struct tracing_instance {
   enum tracer_frequencies current_freq;
 
   struct lclock local_clock;
+
+  guint8 prev_sample;
 } tracing_instance_t;
 
 /* --- proto --- */
-int tracing_init(tracing_instance_t *process, output_module_t *output, GAsyncQueue *timestamp_unref_queue, GAsyncQueue *timestamp_ref_queue);
+int tracing_init(tracing_instance_t *process, output_module_t *output);
 int tracing_start(tracing_instance_t *process, struct channel_configuration chan_conf);
 int tracing_stop(tracing_instance_t *process);
+void tracing_handle_events(tracing_instance_t *process);
 
 void print_free_running_clock_time(tracing_instance_t *process);
 

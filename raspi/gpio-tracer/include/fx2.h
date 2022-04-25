@@ -99,6 +99,8 @@ void fx2_stop_bulk_out_transfer(struct fx2_bulk_transfer_config *transfer_cnfg);
 
 int fx2_free_bulk_transfer(struct fx2_bulk_transfer_config *transfer_cnfg);
 
+void fx2_handle_events(struct fx2_device_manager *manager_instc);
+
 /*
   performs single blocking synchronous bulk transfer
 */

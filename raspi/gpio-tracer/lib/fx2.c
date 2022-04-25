@@ -64,18 +64,10 @@ int fx2_init_manager(struct fx2_device_manager *manager_instc) {
 
   manager_instc->active_bulk_transfers = NULL;
 
-  manager_instc->event_handler_exit = 0;
-  manager_instc->event_handler_thread = g_thread_new("bulk transfer thread", &fx2_transfer_main_loop, (void *)manager_instc);
-
-
   return 0;
 }
 
 int fx2_deinit_manager(struct fx2_device_manager *manager_instc) {
-  manager_instc->event_handler_exit = 1;
-
-  g_thread_join(manager_instc->event_handler_thread);
-
   libusb_exit(manager_instc->libusb_cntxt);
 
   return 0;
@@ -437,8 +429,6 @@ void __check_transfer_finished_func(gpointer data, gpointer user_data) {
   struct fx2_device_manager *manager_instc = (struct fx2_device_manager *) user_data;
 
   if(transfer_cnfg->transfer_num_active <= 0) {
-    g_message("Transfer finished. Calling user supplied callback");
-
     manager_instc->active_bulk_transfers = g_list_remove(manager_instc->active_bulk_transfers, data);
     manager_instc->finished_bulk_transfers = g_list_append(manager_instc->finished_bulk_transfers, data);
   }
@@ -452,29 +442,6 @@ void __call_finished_cb(gpointer data, gpointer user_data) {
 
   (transfer_cnfg->finished_cb)(transfer_cnfg->finished_cb_user_data);
 }
-
-void* fx2_transfer_main_loop(void *thread_data) {
-  struct fx2_device_manager *manager_instc = (struct fx2_device_manager*) thread_data;
-  static struct timeval timeout = { .tv_sec = 0, .tv_usec = 1000};
-
-  while (!manager_instc->event_handler_exit) {
-
-    g_list_foreach(manager_instc->active_bulk_transfers,
-                   &__check_transfer_finished_func,
-                   manager_instc);
-
-    if (g_list_length(manager_instc->finished_bulk_transfers) > 0) {
-      g_list_foreach(manager_instc->finished_bulk_transfers,
-                     &__call_finished_cb,
-                     manager_instc);
-    }
-
-    libusb_handle_events_timeout(manager_instc->libusb_cntxt, &timeout);
-
-    /* g_message("active bulk transfer %d", g_list_length(manager_instc->active_bulk_transfers)); */
-  }
-}
-
 
 void fx2_set_bulk_transfer_packet_callback(struct fx2_bulk_transfer_config *transfer_cnfg, fx2_packet_callback_fn packet_handler, void *user_data) {
   for (size_t i = 0; i < transfer_cnfg->transfer_num; ++i) {
@@ -495,10 +462,8 @@ void fx2_set_bulk_transfer_packet_callback(struct fx2_bulk_transfer_config *tran
  *
  */
 void fx2_set_bulk_transfer_finished_callback(struct fx2_bulk_transfer_config *transfer_cnfg, fx2_finished_callback_fn finished_callback, void *transfer_data) {
-  for (size_t i = 0; i < transfer_cnfg->transfer_num; ++i) {
     transfer_cnfg->finished_cb = finished_callback;
     transfer_cnfg->finished_cb_user_data = transfer_data;
-  }
 }
 
 int fx2_create_bulk_transfer(struct fx2_device_manager *manager_instc,
@@ -600,4 +565,20 @@ int fx2_free_bulk_transfer(struct fx2_bulk_transfer_config *transfer_cnfg) {
 int fx2_reset_device(struct fx2_device_manager *manager_instc) {
   libusb_reset_device(manager_instc->fx2_dev_handl);
   return -1;
-};
+}
+
+void fx2_handle_events(struct fx2_device_manager *manager_instc) {
+  static struct timeval timeout = { .tv_sec = 0, .tv_usec = 1000};
+
+  g_list_foreach(manager_instc->active_bulk_transfers,
+                 &__check_transfer_finished_func,
+                 manager_instc);
+
+  if (g_list_length(manager_instc->finished_bulk_transfers) > 0) {
+    g_list_foreach(manager_instc->finished_bulk_transfers,
+                   &__call_finished_cb,
+                   manager_instc);
+  }
+
+  libusb_handle_events_timeout(manager_instc->libusb_cntxt, &timeout);
+}

@@ -24,9 +24,7 @@
 
 
 static GDBusNodeInfo* introspection_data = NULL;
-static GAsyncQueue *_trace_queue; // store queues so we can later safely unref them
-static GAsyncQueue *_timestamp_unref_queue;
-static GAsyncQueue *_timestamp_ref_queue;
+
 static tracing_instance_t *tracing_task;
 static chunked_output_t *chunked_output;
 
@@ -60,10 +58,6 @@ static int start_tasks(struct channel_configuration chan_conf) {
   int ret;
   struct stat st = {0};
 
-  _trace_queue           = g_async_queue_new();
-  _timestamp_unref_queue = g_async_queue_new();
-  _timestamp_ref_queue   = g_async_queue_new();
-
   if (stat(trace_path, &st)) {
     g_printf("creating path for storing traces!\n");
     if (mkdir(trace_path, 0700) < 0) {
@@ -75,12 +69,6 @@ static int start_tasks(struct channel_configuration chan_conf) {
   tracing_task = malloc(sizeof(tracing_instance_t));
   chunked_output = chunked_output_new();
 
-  #ifdef WITH_TIMESYNC
-  if ((ret = radio_init(_timestamp_unref_queue, _timestamp_ref_queue)) < 0) {
-    return -1;
-  }
-  #endif
-
   if ((ret = chunked_output_init(chunked_output, trace_path))) {
     #ifdef WITH_TIMESYNC
     radio_deinit();
@@ -88,7 +76,7 @@ static int start_tasks(struct channel_configuration chan_conf) {
     return -1;
   }
 
-  if ((ret = tracing_init(tracing_task, (output_module_t*) chunked_output, _timestamp_unref_queue, _timestamp_ref_queue))) {
+  if ((ret = tracing_init(tracing_task, (output_module_t*) chunked_output))) {
     #ifdef WITH_TIMESYNC
     radio_deinit();
     #endif
@@ -116,10 +104,6 @@ static int stop_tasks() {
   #endif
 
   chunked_output_deinit(chunked_output);
-
-  g_async_queue_unref(_trace_queue          );
-  g_async_queue_unref(_timestamp_unref_queue);
-  g_async_queue_unref(_timestamp_ref_queue  );
 
   return 0;
 }

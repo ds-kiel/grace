@@ -7,7 +7,7 @@ Type=dbus
 BusName=org.cau.gpiot
 User=user
 # Environment="LD_LIBRARY_PATH=/usr/testbed/gpio-tracer"
-ExecStart=/usr/testbed/gpio-tracer2/gpio-tracer/build/src/gpiotd
+ExecStart=/usr/testbed/gpio-tracer/build/src/gpiotd
 Restart=on-failure
 
 [Install]

@@ -26,11 +26,9 @@ void packet_callback(uint8_t *packet_data, int length) {
 }
 
 int main(int argc, char *argv[]) {
-  static tracing_instance_t *tracing_task;
-  static chunked_output_t *chunked_output;
-  static GAsyncQueue *_timestamp_unref_queue;
-  static GAsyncQueue *_timestamp_ref_queue;
-
+  tracing_instance_t *tracing_task;
+  chunked_output_t *chunked_output;
+  
   struct channel_configuration chan_conf = {
     .ch1 = SAMPLE_ALL,
     .ch2 = SAMPLE_ALL,
@@ -49,32 +47,17 @@ int main(int argc, char *argv[]) {
 
   signal(SIGINT, intHandler);
 
-  _timestamp_unref_queue = g_async_queue_new();
-  _timestamp_ref_queue   = g_async_queue_new();
-
   tracing_task = malloc(sizeof(tracing_instance_t));
 
   chunked_output = chunked_output_new();
   chunked_output_init(chunked_output, argv[1]);
 
-#ifdef WITH_TIMESYNC
-  g_message("Time synchronization enabled");
-
-  radio_init(_timestamp_unref_queue, _timestamp_ref_queue);
-#endif
-
-  tracing_init(tracing_task, (output_module_t*) chunked_output, _timestamp_unref_queue, _timestamp_ref_queue);
+  tracing_init(tracing_task, (output_module_t*) chunked_output);
 
   tracing_start(tracing_task, chan_conf);
 
-#ifdef WITH_TIMESYNC
-  g_message("Time synchronization enabled");
-
-  radio_start_reception();
-#endif
-
-  while(keep_running) {
-    ;;
+  while (keep_running) { // TODO main loop
+    tracing_handle_events(tracing_task);
   }
 
   print_free_running_clock_time(tracing_task);
