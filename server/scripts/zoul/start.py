@@ -15,17 +15,10 @@ REMOTE_GPIO_APP_PATH = "/usr/testbed/gpio-tracer"
 REMOTE_ZOUL_SCRIPTS_PATH = os.path.join(REMOTE_SCRIPTS_PATH, "zoul")
 REMOTE_TMP_PATH = "/home/user/tmp"
 REMOTE_FIRMWARE_PATH = os.path.join(REMOTE_TMP_PATH, "firmware.bin")
+REMOTE_SERIAL_FORWARDER_PATH = os.path.join(REMOTE_TMP_PATH, "serial_forwarders.txt")
 REMOTE_BSL_ADDRESS_PATH = os.path.join(REMOTE_TMP_PATH, "bsl_address.txt")
 
-trace_gpio = False
-
-def usage():
-    print "Usage: $start.py command [--parameter value]"
-    print
-    print "Commands:"
-    print "trace_gpio         'bitmask of channels to be traced'"
-    sys.exit(1)
-
+  
 if __name__=="__main__":
 
   if len(sys.argv)<2:
@@ -44,6 +37,11 @@ if __name__=="__main__":
 
   # The only parameter contains the job directory
   job_dir = sys.argv[1]
+  forward_serial = True if sys.argv[2] == "forward" else False
+  if forward_serial:
+    forward_serial_hosts_path = os.path.join(job_dir, "forward_serial_hosts")
+    if not os.path.exists(forward_serial_hosts_path):
+      forward_serial_hosts_path = None
 
   # Look for the firmware
   elf_path = None
@@ -71,16 +69,18 @@ if __name__=="__main__":
     sys.exit(3)
   if pscp(hosts_path, bin_path, REMOTE_FIRMWARE_PATH, "Copying zoul firmware to the PI nodes") != 0:
     sys.exit(4)
+  # Copy forwarder list to nodes
+  if forward_serial and forward_serial_hosts_path:
+    if pscp(hosts_path, forward_serial_hosts_path, REMOTE_SERIAL_FORWARDER_PATH, "Copying forward serial hosts to the PI nodes") != 0:
+      sys.exit(5)
   # Program the nodes
   if pssh(hosts_path, "%s %s %s"%(os.path.join(REMOTE_ZOUL_SCRIPTS_PATH, "install.sh"), REMOTE_FIRMWARE_PATH, REMOTE_BSL_ADDRESS_PATH), "Installing zoul firmware") != 0:
-    sys.exit(5)
+    sys.exit(6)
   # Start serialdump
-  if not trace_gpio:
-    remote_log_dir = os.path.join(REMOTE_LOGS_PATH, os.path.basename(job_dir), "log.txt")
+  remote_log_dir = os.path.join(REMOTE_LOGS_PATH, os.path.basename(job_dir), "log.txt")
+  if not forward_serial:
     if pssh(hosts_path, "%s %s"%(os.path.join(REMOTE_ZOUL_SCRIPTS_PATH, "serialdump.sh"), remote_log_dir), "Starting serialdump") != 0:
-      sys.exit(6)
-  else:
-    remote_log_dir = os.path.join(REMOTE_LOGS_PATH, os.path.basename(job_dir), "gpio-traces.csv")
-    if pssh(hosts_path, "%s --start --device=sigrok --logpath=%s"%(os.path.join(REMOTE_GPIO_APP_PATH "gpiotc"), remote_log_dir), "Start GPIO tracing") != 0:
       sys.exit(7)
-
+  else:
+    if pssh(hosts_path, "%s %s"%(os.path.join(REMOTE_ZOUL_SCRIPTS_PATH, "serial_forwarder.sh"), remote_log_dir), "Starting serialdump with forwarding") != 0:
+      sys.exit(8)

@@ -1,5 +1,5 @@
 #!/bin/bash
-########## To sync: rsync -avz -e "ssh -p17122" ./iot-testbed testbed@sunlight.ds.informatik.uni-kiel.de:/home/testbed ######
+########## To sync: rsync -avz -e "ssh -pPORT" ./iot-testbed TESTBED-ACCOUNT@SERVER-DOMAIN:/home/testbed ######
 
 ########## Server side ###########
 ##### Make a user called testbed that have sudo, and execute thses steps from user tesbed
@@ -27,17 +27,15 @@ sudo wget https://linuxnet.ca/ieee/oui.txt -O /usr/local/etc/oui.txt
 ####ping PIs
 for ip in $(cat ./server/scripts/all-hosts); do ping -c 1 -t 1 $ip && echo "${ip} is up"; done | grep "is up"
 
-####add user 'testbed' to dialout group
-sudo usermod -aG dialout testbed
+####add user 'TESTBED-ACCOUNT' to dialout group
+sudo usermod -aG dialout TESTBED-ACCOUNT
 
-####add the users that need to use the testbedSW to the group testbed
-sudo usermod -aG testbed ban
-sudo usermod -aG testbed oha
-sudo usermod -aG testbed vpo
+####add the users that need to use the testbedSW to the group testbed, perform for each user
+sudo usermod -aG testbed USER
 
 ####create install folder for testbed SW
 sudo mkdir -p /usr/testbed
-sudo chown testbed:testbed /usr/testbed
+sudo chown TESTBED-ACCOUNT:TESTBED-ACCOUNT /usr/testbed
 
 ########## RasPIs ##########
 ####1. Preparation steps:
@@ -84,8 +82,8 @@ python /usr/testbed/scripts/testbed.py create --name 'null' --platform 'nrf52' -
 # parallel-ssh --hosts ./server/scripts/all-hosts --user user  --inline "ntptime"
 
 ####9. test making a job from your laptop using your own account on the server: (replace the variables with usseful arguments)
-# scp -P17122 $(FNAME).hex ${USER}@sunlight.ds.informatik.uni-kiel.de:/home/${USER}/newjob.nrf52.hex
-# ssh -p17122 ${USER}@sunlight.ds.informatik.uni-kiel.de "python /usr/testbed/scripts/testbed.py create --name '${NAME}' --platform 'nrf52' --duration ${DURATION} --copy-from /home/${USER}/newjob.nrf52.hex --start"
+# scp -PPORT $(FNAME).hex ${USER}@SERVER-DOMAIN:/home/${USER}/newjob.nrf52.hex
+# ssh -pPORT ${USER}@SERVER-DOMAIN "python /usr/testbed/scripts/testbed.py create --name '${NAME}' --platform 'nrf52' --duration ${DURATION} --copy-from /home/${USER}/newjob.nrf52.hex --start"
 
 ####10. if this makes a problem, then disable apt autoupdate. Steps:
 # systemctl stop apt-daily.service
@@ -111,11 +109,11 @@ for ip in $(cat /usr/testbed/scripts/all-hosts); do
 done
 ####3. add the newuser public key to allow accessing PIs without password
 ###### a. create ssh keys if you do not have them
-ssh -p17122 NEWUSER@sunlight.ds.informatik.uni-kiel.de
+ssh -pPORT NEWUSER@SERVER-DOMAIN
 ssh-keygen
 exit
 ###### b. login as user testbed
-ssh -p17122 testbed@sunlight.ds.informatik.uni-kiel.de
+ssh -pPORT testbed@SERVER-DOMAIN
 ###### c. copy the user public key to PIs
 parallel-scp --hosts ./server/scripts/all-hosts --user user /home/NEWUSER/.ssh/id_rsa.pub /home/user/.ssh/id_rsa.pub.NEWUSER
 ###### d. add the user public key to PIs authorized_keys
