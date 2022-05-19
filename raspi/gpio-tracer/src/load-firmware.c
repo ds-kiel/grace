@@ -12,7 +12,7 @@ void packet_callback(uint8_t *packet_data, int length, void *user_data) {
 }
 
 int main(int argc, char *argv[]) {
-  g_message("starting fx2 test program");
+  g_message("download fx2 firmware to mcu");
 
   if (argc < 2) {
     printf("missing arguments. Usage: test_fx2 <path_to_firmware>\n");
@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
   fread(bix, sizeof(bix), 1, f_bix);
 
   /* if(print_bix) */
-    pretty_print_memory(bix, 0x0000, sizeof(bix));
+    /* pretty_print_memory(f_bix, 0x0000, sizeof(bix)); */
 
   // enumerate candidate device
   struct fx2_device_manager manager;
@@ -49,14 +49,11 @@ int main(int argc, char *argv[]) {
   fx2_find_devices(&manager);
   fx2_open_device(&manager);
 
-
   fx2_create_bulk_transfer(&manager, &transfer_cnfg, 20, (1 << 17));
 
   fx2_set_bulk_transfer_packet_callback(&transfer_cnfg, &packet_callback, NULL);
 
   fx2_submit_bulk_out_transfer(&manager, &transfer_cnfg);
-
-  unsigned char data[2];
 
   // write firmware to device
   fx2_cpu_set_reset(&manager);
@@ -71,16 +68,7 @@ int main(int argc, char *argv[]) {
   sleep(1);
   fx2_close_device(&manager);
 
-  sleep(4);
-  fx2_find_devices(&manager);
-
-  fx2_open_device(&manager);
-
-  sleep(2);
-
   fx2_deinit_manager(&manager);
-
-  fx2_close_device(&manager);
-
+  
   return 0;
 }

@@ -60,7 +60,7 @@ enum tracer_status_codes {
 
 void set_gpif_delay(unsigned char delay);
 unsigned char get_gpif_delay();
-char gpif_poll_finished();
+char gpif_finished();
 
 const char __xdata testdata[] = { 0xc0, 0xf9, 0xa4, 0xb0, 0x99, 0x92, 0x82, 0xf8, 0x80, 0x98, 0x88, 0x83, 0xc6, 0xa1, 0x86, 0x8e  };
 
@@ -105,7 +105,9 @@ const char __xdata InitData[7] =
 };
 
 volatile unsigned char wave_delay;
+volatile unsigned char do_renum = 0;
 volatile __bit got_sud;
+
 __bit on;
 
 void setup() {
@@ -115,13 +117,13 @@ void setup() {
   on=0;
   got_sud=FALSE;
 
-  // renumerate
-  RENUMERATE_UNCOND();
-
-
   SETCPUFREQ(CLK_48M);
   SETIF48MHZ();
   /* sio0_init(57600); */
+
+  // renumerate
+  RENUMERATE_UNCOND();
+
 
   USE_USB_INTS();
   ENABLE_SUDAV();
@@ -218,7 +220,7 @@ void gpif_endpoint_setup() {
   EP8FIFOCFG = 0x00;
 }
 
-char gpif_poll_finished() {
+char gpif_finished() {
   return GPIFIDLECS & 0x80;
 }
 
@@ -269,7 +271,17 @@ void main() {
     }
 
     // tracer_state directly represents state of GPIF
-    tracer_state = gpif_poll_finished() ? TRACER_GPIF_STOPPED : TRACER_GPIF_RUNNING;
+    tracer_state = gpif_finished() ? TRACER_GPIF_STOPPED : TRACER_GPIF_RUNNING;
+
+    if (do_renum) {
+      do_renum = 0;      
+
+      if(!gpif_finished()) {
+        gpif_abort_transaction();
+      }
+
+      RENUMERATE_UNCOND();
+    }
   }
 }
 
@@ -332,11 +344,9 @@ BOOL handle_vendorcommand(BYTE cmd) {
   case VC_RENUM:
     {
       debug_printf("defer usb handling to fx2lp\n");
-      if(!gpif_poll_finished()) {
-        gpif_abort_transaction();
-      }
+      
+      do_renum = 1;
 
-      USBCS &= ~bmRENUM;
       return TRUE;
     }
   case VC_SET_DELAY:

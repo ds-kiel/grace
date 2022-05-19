@@ -350,7 +350,7 @@ int tracing_fw_renumerate(struct fx2_device_manager *manager_instc) {
                                   manager_instc,
                                   LIBUSB_REQUEST_TYPE_VENDOR,
                                   VC_RENUM, 0x00, 0, NULL, 0)) < 0) {
-    g_error("could not stop tracing:");
+    g_message("renumeration failed");
     return -1;
   }
 
@@ -435,7 +435,7 @@ int firmware_wait(struct fx2_device_manager *manager_instc, enum tracer_status_c
 
 
 // TODO pass from higher layer
-#define TMP_FIRMWARE_LOCATION "../firmware/fx2/build/fx2-tracer.bix"
+#define TMP_FIRMWARE_LOCATION "/usr/testbed/gpio-tracer/firmware/fx2/build/fx2-tracer.bix"
 int tracing_start(tracing_instance_t *process, struct channel_configuration channel_conf) {
   struct fx2_device_manager *manager = &process->fx2_manager;
   struct fx2_bulk_transfer_config *transfer_cnfg = &process->transfer_cnfg;
@@ -524,7 +524,7 @@ tracing_instance_t* tracing_init(output_module_t *output) {
 
   manager = &process->fx2_manager;  
 
-  process->current_freq = FREQ_24000000;
+  process->current_freq = FREQ_12000000;
 
   /* // initialize local clock */
   init_clock(process);

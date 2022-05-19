@@ -22,6 +22,8 @@ struct fx2_usb_device {
     {0x0925, 0x3881, "Vendor-Specific Device"},
     {0x1991, 0x0111, "FX2 Logic Analyzer"},
     {0x04b4, 0x8613, "Cypress Semiconductor Vendor-Specific Device"},
+    {0x04b4, 0x0082, "Cypress Semiconductor Vendor-Specific Device"},            
+    {0x04b4, 0x0083, "Cypress Semiconductor Usb Term"},
     {0x0000, 0x0000, NULL},
 };
 
