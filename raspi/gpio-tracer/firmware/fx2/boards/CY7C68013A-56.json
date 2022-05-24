@@ -1,0 +1,20 @@
+{
+    "build": {
+        "f_cpu": "24000000",
+        "size_code": 15360,        
+        "size_xram": 512,
+        "loc_xram": 15360,
+        "size_heap": 128,
+        "size_iram": 256,
+        "mcu": "cy7c68013a",
+        "cpu": "mcs51"
+    },
+    "upload": {
+        "maximum_ram_size": 256,
+        "maximum_size": 15360
+    },
+    "frameworks": [],
+    "name": "CY7C68013A-56",
+    "url": "https://www.infineon.com/cms/en/product/universal-serial-bus-usb-power-delivery-controller/peripheral-controllers/ez-usb-fx2lp/",
+    "vendor": "INF"
+}
