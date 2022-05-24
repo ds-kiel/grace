@@ -58,7 +58,7 @@ int main(int argc, char *argv[]) {
   // write firmware to device
   fx2_cpu_set_reset(&manager);
 
-  g_message("uploading firmware");
+  g_message("Downloading firmware");
 
   fx2_download_firmware(&manager, bix, sizeof(bix), 1);
 
