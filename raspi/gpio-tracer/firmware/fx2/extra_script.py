@@ -2,8 +2,8 @@ Import("env", "projenv")
 
 from os.path import join
 
-VID = int(env.GetProjectOption("VID"), 16)
-PID = int(env.GetProjectOption("PID"), 16)
+VID = int(env.GetProjectOption("vid"), 16)
+PID = int(env.GetProjectOption("pid"), 16)
 
 libdeps_dir = env.get("PROJECT_LIBDEPS_DIR")
 board = env.get("BOARD")

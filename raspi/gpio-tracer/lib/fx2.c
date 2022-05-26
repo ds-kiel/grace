@@ -388,9 +388,9 @@ int fx2_download_firmware(struct fx2_device_manager *manager_instc,
       return -1;
     }
 
-    g_message("Wrote %zu of %zu bytes", transferred_bytes, length);
-
     transferred_bytes += ret;
+    
+    g_message("Wrote %zu of %zu bytes", transferred_bytes, length);
   }
 
   if (verify) {

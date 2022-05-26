@@ -31,10 +31,10 @@ int write_eeprom(struct fx2_device_manager *manager_instc, unsigned char *bytes,
       g_message("could not write to rom");
       return -1;
     }
-
-    g_message("Wrote %zu of %zu bytes", transferred_bytes, length);
-
+    
     transferred_bytes += ret;
+    
+    g_message("Wrote %zu of %zu bytes", transferred_bytes, length);
   }
 
 }

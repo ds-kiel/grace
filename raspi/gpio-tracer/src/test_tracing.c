@@ -13,6 +13,16 @@
 
 static volatile int keep_running = 1;
 
+static gchar *trace_path;
+static gchar *firmware_location;
+
+static const GOptionEntry entries[] = {
+  {"firmware", 'f', 0, G_OPTION_ARG_STRING, &firmware_location, "location for firmware (has to be in .bix format)", NULL},
+  {"tracepath", 'p', 0, G_OPTION_ARG_STRING, &trace_path, "path for traces", "/tmp/"},
+  { NULL }
+};
+
+
 void intHandler(int dummy) {
     keep_running = 0;
 }
@@ -26,6 +36,8 @@ void packet_callback(uint8_t *packet_data, int length) {
 }
 
 int main(int argc, char *argv[]) {
+  GOptionContext *option_context;  
+  GError *error;    
   tracing_instance_t *tracing_task;
   chunked_output_t *chunked_output;
   
@@ -40,17 +52,20 @@ int main(int argc, char *argv[]) {
     .ch8 = SAMPLE_RADIO,
   };
 
-  if (argc < 3) {
-    printf("missing arguments. Usage: test_tracing <firmware-location> <path_for_traces>\n");
-    return 0;
+
+  option_context = g_option_context_new("control gpio tracer daemon");    
+  g_option_context_add_main_entries(option_context, entries, NULL);
+  if(!g_option_context_parse(option_context, &argc, &argv, &error)) {
+    g_message("option parsing failed: %s\n", error->message);
+    exit(1);
   }
 
   signal(SIGINT, intHandler);
 
   chunked_output = chunked_output_new();
-  chunked_output_init(chunked_output, argv[1]);
+  chunked_output_init(chunked_output, trace_path);
 
-  tracing_task = tracing_init((output_module_t*) chunked_output, argv[2]);
+  tracing_task = tracing_init((output_module_t*) chunked_output, firmware_location);
 
   tracing_start(tracing_task, chan_conf);
 
@@ -71,6 +86,8 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_TIMESYNC
   radio_deinit();
 #endif
+
+  g_option_context_free(option_context);  
 
   return 0;
 }
