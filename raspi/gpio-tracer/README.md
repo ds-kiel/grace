@@ -1,6 +1,4 @@
-# Installation
-See [stackoverflow](https://serverfault.com/questions/892465/starting-systemd-services-sharing-a-session-d-bus-on-headless-system)
-
+# Installation Observer Software
 The following instructions are for a deployment on raspbian/debian 11 (bullseye).  Since we only
 depent on libusb, dbus and glib the installation should be similar for other distributions.
 
@@ -62,3 +60,17 @@ Start tracing with sigrok and save traces in a log file:
 # stop tracing again
     ./gpiotc --stop
 ```
+
+# Installation reference clock/Logic Analyzer firmware
+
+We use [PlatformIO](https://platformio.org/), for building the firmware both for the reference clock (`firmware/stm32`) and the Logic Analyzer (`firmware/fx2`).
+Building should be as simple as executing pio run in the respective folders for each firmware.
+
+for example for building the reference clock firmware:
+```
+    cd firmware/stm32
+    pio run
+    pio run -t upload # after setting mcu in dfu mode
+```
+
+Note that the firmware (`firmware.bix`) of the Logic Analyzer will be installed automatically by the gpio tracing daemon `gpiotd`.
