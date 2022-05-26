@@ -6,7 +6,7 @@ On your observer node you will have to install both `gpiotd` and `gpiotc`. hereb
 application running as a systemd service that takes action from `gpiotc` through dbus.
 
 ## Install dependencies
-```
+```sh
   apt update
   apt install -y libglib2.0-dev python3 cmake libusb-1.0-0-dev  
   apt install default-dbus-session-bus # Needed for running gpiotd in a dbus-user sessions.
@@ -14,7 +14,7 @@ application running as a systemd service that takes action from `gpiotc` through
 
 ## Build
 For development purposes it is possible to disable the time synchronization aspect.
-```
+```sh
     mkdir build
     cd build
     cmake .. -DWITH_RADIO_SYNC=On
@@ -24,7 +24,7 @@ For development purposes it is possible to disable the time synchronization aspe
 ## Enable spidev
 Either use raspi-config to enable SPI or add `dtparam=spi=on` to `/boot/config.txt`
 additionaly the user running the daemon will have to be added to the `spi`  and the `plugdev` group.
-```
+```sh
 # Only needed if you don't enable spi manually
 sed -i 's/#.*dtparam=spi=on/dtparam=spi=on/g' /boot/config.txt 
 
@@ -33,7 +33,7 @@ usermod -a -G plugdev user
 ```
 
 ## Install udev rules
-```
+```sh
 # copy or link the udev rules. The location for udev rules might differ for other
   cp udev/60-gpio-tracer.rules /usr/lib/udev/rules.d/
   cp udev/60-gpio-tracer.rules /etc/udev/rules.d/
@@ -43,7 +43,7 @@ usermod -a -G plugdev user
 
 # Installation - gpiod service
 Install the systemd service. Be sure to adapt the install location in `dbus-org.cau.gpiot.service`.
-```
+```sh
     cp systemd/dbus-org.cau.gpiot.service /etc/systemd/system/
     cp systemd/org.cau.gpiot.service /usr/share/dbus-1/system-services/
     cp systemd/gpiot.conf /etc/dbus-1/system.d/
@@ -53,7 +53,7 @@ Install the systemd service. Be sure to adapt the install location in `dbus-org.
 
 Start tracing with sigrok and save traces in a log file:
 
-```
+```sh
 # instruct gpiotd to start tracing. Make sure that the daemon is running.
     ./gpiotc --start --tracedir=<some path to store traces>
     
@@ -64,10 +64,10 @@ Start tracing with sigrok and save traces in a log file:
 # Installation reference clock/Logic Analyzer firmware
 
 We use [PlatformIO](https://platformio.org/), for building the firmware both for the reference clock (`firmware/stm32`) and the Logic Analyzer (`firmware/fx2`).
-Building should be as simple as executing pio run in the respective folders for each firmware.
+Building should be as simple as executing `pio run` in the respective folders for each firmware.
 
 for example for building the reference clock firmware:
-```
+```sh
     cd firmware/stm32
     pio run
     pio run -t upload # after setting mcu in dfu mode
