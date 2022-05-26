@@ -2,8 +2,7 @@
 This simple PCB can be used to wire together the development boards for easier
 deployment. Alternatively, one can simply wire together everything using jumper wires. We produced
 our PCBs at [JLCPCB](https://jlcpcb.com/), look below for our order configuration.
-
-The schematic files can be opened and exported to gerber files using
+ The schematic files can be opened and exported to gerber files using
 [KiCad](https://www.kicad.org/).  You can also look at the schematic for a reference as to how to
 wire everything together.
 
@@ -18,7 +17,7 @@ available development boards. Just make sure that at least one GPIO (GDx) is exp
 ## Logic Analyzer
 Use one of the commonly available ez-usb fx2lp based logic analyzer if you want to use our
 PCB. Otherwise, if you jump wire everything you can also use a fx2lp development board.
-![logic analzer](./logic-analyzer.jpg)
+![logic analyzer](./logic-analyzer.jpg)
 
 ## Miscellaneous
 - [2.54mm 10pin Straight Type Box Header](https://www.reichelt.de/wannenstecker-10-polig-gerade-wsl-10g-p22816.html)
