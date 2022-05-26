@@ -23,6 +23,10 @@ PCB. Otherwise, if you jump wire everything you can also use a fx2lp development
 
 <img src="./images/logic-analyzer.png" width="350">
 
+## Reference Clock
+We need one node that emits a reference message every other second. For our setup, we use a
+STM32F401CC, but other microcontrollers can easily be adapted to work as reference node as well.
+
 ## Miscellaneous
 - [2.54mm 10pin Straight Type Box Header](https://www.reichelt.de/wannenstecker-10-polig-gerade-wsl-10g-p22816.html)
 - [2.54mm 10pin IDC Socket](https://www.reichelt.de/pfostenbuchse-10-polig-mit-zugentlastung-pfl-10-p14571.html?&trstct=pos_0&nbc=1)
