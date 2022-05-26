@@ -117,14 +117,14 @@ static void on_name_vanished(GDBusConnection *connection, const gchar *name,
 int main(int argc, char *argv[]) {
   guint watcher_id;
   GError *error;
-  GOptionContext *context;
+  GOptionContext *option_context;
 
   error = NULL;
 
-  context = g_option_context_new("control gpio tracer daemon");
-  g_option_context_add_main_entries(context, entries, NULL);
+  option_context = g_option_context_new("control gpio tracer daemon");
+  g_option_context_add_main_entries(option_context, entries, NULL);
 
-  if(!g_option_context_parse(context, &argc, &argv, &error)) {
+  if(!g_option_context_parse(option_context, &argc, &argv, &error)) {
     g_printf("option parsing failed: %s\n", error->message);
     exit(1);
   }
@@ -141,7 +141,7 @@ int main(int argc, char *argv[]) {
   loop = g_main_loop_new(NULL, FALSE);
   g_main_loop_run(loop);
 
-  g_option_context_free(context);
+  g_option_context_free(option_context);
   g_bus_unwatch_name(watcher_id);
   exit(0);
 }

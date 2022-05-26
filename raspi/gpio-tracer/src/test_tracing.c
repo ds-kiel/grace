@@ -40,8 +40,8 @@ int main(int argc, char *argv[]) {
     .ch8 = SAMPLE_RADIO,
   };
 
-  if (argc < 2) {
-    printf("missing arguments. Usage: test_fx2 <path_for_traces>\n");
+  if (argc < 3) {
+    printf("missing arguments. Usage: test_tracing <firmware-location> <path_for_traces>\n");
     return 0;
   }
 
@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
   chunked_output = chunked_output_new();
   chunked_output_init(chunked_output, argv[1]);
 
-  tracing_task = tracing_init((output_module_t*) chunked_output);
+  tracing_task = tracing_init((output_module_t*) chunked_output, argv[2]);
 
   tracing_start(tracing_task, chan_conf);
 

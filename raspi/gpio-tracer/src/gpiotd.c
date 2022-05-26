@@ -29,6 +29,12 @@ static tracing_instance_t *tracing_task;
 static chunked_output_t *chunked_output;
 
 static gchar *trace_path;
+static gchar *firmware_location;
+
+static const GOptionEntry entries[] = {
+  {"firmware", 'f', 0, G_OPTION_ARG_STRING, &firmware_location, "location for firmware (has to be in .bix format)", NULL},
+  { NULL }
+};
 
 /* Introspection data for the service we are exporting */
 static const gchar introspection_xml[] =
@@ -72,7 +78,7 @@ static int start_tasks(struct channel_configuration chan_conf) {
     return -1;
   }
  
-  if ((tracing_task = tracing_init((output_module_t*) chunked_output)) == NULL) {
+  if ((tracing_task = tracing_init((output_module_t*) chunked_output, firmware_location)) == NULL) {
     chunked_output_deinit(chunked_output);
     return -1;
   }
@@ -203,15 +209,25 @@ static void on_name_lost(GDBusConnection* connection, const gchar* name, gpointe
 
 int main(int argc, char *argv[])
 {
-  GMainContext* main_context;
+  GMainContext *main_context;
+  GOptionContext *option_context;  
+  GError *error;  
   guint owner_id;
   GBusNameOwnerFlags flags;
 
   g_printf("Started gpiot daemon!\n");
+  
 
   main_context  =  g_main_context_new();
   g_main_context_push_thread_default(main_context);
 
+  // parse command line arguments
+  option_context = g_option_context_new("control gpio tracer daemon");    
+  g_option_context_add_main_entries(option_context, entries, NULL);
+  if(!g_option_context_parse(option_context, &argc, &argv, &error)) {
+    g_printf("option parsing failed: %s\n", error->message);
+    exit(1);
+  }
 
   introspection_data = g_dbus_node_info_new_for_xml(introspection_xml, NULL);
   g_assert(introspection_data != NULL);
@@ -234,6 +250,7 @@ cleanup:
     g_bus_unown_name(owner_id);
     g_dbus_node_info_unref(introspection_data);
     g_main_context_pop_thread_default(main_context);
+    g_option_context_free(option_context);
 
   return 0;
 }

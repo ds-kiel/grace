@@ -360,7 +360,7 @@ int tracing_fw_renumerate(struct fx2_device_manager *manager_instc) {
 
 
 // download is from the perspective of fx2lp, i.e., the firmware is downloaded into ram
-int __download_tracer_firmware(tracing_instance_t *process, char* firmware_path) {
+int download_tracer_firmware(tracing_instance_t *process, char* firmware_path) {
   struct fx2_device_manager *manager = &process->fx2_manager;
   // read firmware
   char *fname_bix = firmware_path;
@@ -514,7 +514,7 @@ int tracing_stop(tracing_instance_t *process) {
   return 0;
 }
 
-tracing_instance_t* tracing_init(output_module_t *output) {
+tracing_instance_t* tracing_init(output_module_t *output, gchar *firmware_location) {
   int ret;
   tracing_instance_t *process;    
   struct fx2_device_manager *manager;
@@ -533,18 +533,22 @@ tracing_instance_t* tracing_init(output_module_t *output) {
   fx2_init_manager(manager);
   
   fx2_find_devices(manager);
-  fx2_open_device(manager);
 
-  fx2_get_status(manager);
+  // if no firmware location is passed we assume that the firmware is already burned onto ROM of the Logic Analyzer
+  if(firmware_location != NULL) {
+    fx2_open_device(manager);
 
-  sleep(1);
+    fx2_get_status(manager);
+    // TODO avoid sleep by checking return code
+    sleep(1);
+    
+    download_tracer_firmware(process, firmware_location);
+    sleep(1);
 
-  __download_tracer_firmware(process, TMP_FIRMWARE_LOCATION);
-  sleep(1);
+    fx2_close_device(manager);
+    sleep(2);
+  }
 
-  fx2_close_device(manager);
-  sleep(2);
-  
 #ifdef WITH_TIMESYNC
   g_message("Time synchronization enabled");
 

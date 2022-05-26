@@ -42,7 +42,7 @@ udevadm control --reload-rules && udevadm trigger
 ```
 
 ## Install and Enable `gpiotd` Service
-Install the systemd service. Be sure to adapt the install location in `dbus-org.cau.gpiot.service`.
+Install the systemd service. Be sure to adapt the install location of the Logic Analyzer firmware and `gpiotd` in `dbus-org.cau.gpiot.service`.
 ```sh
 # Install the service
 cp systemd/dbus-org.cau.gpiot.service /etc/systemd/system/
@@ -53,7 +53,7 @@ cp systemd/gpiot.conf /etc/dbus-1/system.d/
 
 ## Start/Stop Tracing using `gpiotc`
 
-Start tracing with sigrok and save traces in a log file:
+Start tracing with Logic Analyzer and save traces in a log file:
 
 ```sh
 # instruct gpiotd to start tracing. Make sure that the daemon is running.
