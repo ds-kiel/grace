@@ -2,7 +2,7 @@
 #define GPIOT_H
 
 /* --------------------------------------- */
-/* | channel | bcm-gpio | sigrok-channel | */
+/* | channel | bcm-gpio |        channel | */
 /* |       0 |    23    |              0 | */
 /* |       1 |    -     |              1 | */
 /* |       2 |    -     |              2 | */
