@@ -6,7 +6,7 @@ our PCBs at [JLCPCB](https://jlcpcb.com/), look below for our order configuratio
 [KiCad](https://www.kicad.org/).  You can also look at the schematic for a reference as to how to
 wire everything together.
 
-<img src="./images/testbed.jpeg" width="300">
+<img src="./images/testbed.jpeg" width="350">
 
 # Hardware
 ## Receiver
@@ -14,12 +14,12 @@ We use a commonly available of-the-shelf cc1101 development board for our setup.
 our circuit board for deployment, you need to get a board with the same pin-out configuration.  If
 you don't want to use our board and use jumper wires instead, you can get one of the other commonly
 available development boards. Just make sure that at least one GPIO (GDx) is exposed.
-![cc1101 development board used. Commonly available on many online marketplaces.](./images/cc1101.JPG)
+<img src="./images/cc1101.JPG" width="350">
 
 ## Logic Analyzer
 Use one of the commonly available ez-usb fx2lp based logic analyzer if you want to use our
 PCB. Otherwise, if you jump wire everything you can also use a fx2lp development board.
-![logic analyzer](./images/logic-analyzer.png)
+<img src="./images/logic-analyzer.png" width="350">
 
 ## Miscellaneous
 - [2.54mm 10pin Straight Type Box Header](https://www.reichelt.de/wannenstecker-10-polig-gerade-wsl-10g-p22816.html)
