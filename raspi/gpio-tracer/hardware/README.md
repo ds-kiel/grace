@@ -6,7 +6,7 @@ our PCBs at [JLCPCB](https://jlcpcb.com/), look below for our order configuratio
 [KiCad](https://www.kicad.org/).  You can also look at the schematic for a reference as to how to
 wire everything together.
 
-![logic analyzer](./images/testbed.jpeg)
+<img src="./images/testbed.jpeg" width="300">
 
 # Hardware
 ## Receiver
