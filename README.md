@@ -2,6 +2,10 @@
 
 A very simple testbed for the IoT!
 
+## GPIO Tracing
+
+Please refer to `raspi/gpio-tracer` for our gpio tracing implementation.
+
 ## Installation
 
 ### for platform Zoul
