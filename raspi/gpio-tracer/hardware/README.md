@@ -14,11 +14,13 @@ We use a commonly available of-the-shelf cc1101 development board for our setup.
 our circuit board for deployment, you need to get a board with the same pin-out configuration.  If
 you don't want to use our board and use jumper wires instead, you can get one of the other commonly
 available development boards. Just make sure that at least one GPIO (GDx) is exposed.
+
 <img src="./images/cc1101.JPG" width="350">
 
 ## Logic Analyzer
 Use one of the commonly available ez-usb fx2lp based logic analyzer if you want to use our
 PCB. Otherwise, if you jump wire everything you can also use a fx2lp development board.
+
 <img src="./images/logic-analyzer.png" width="350">
 
 ## Miscellaneous
