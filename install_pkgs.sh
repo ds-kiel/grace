@@ -115,6 +115,6 @@ exit
 ###### b. login as user testbed
 ssh -pPORT testbed@SERVER-DOMAIN
 ###### c. copy the user public key to PIs
-parallel-scp --hosts ./server/scripts/all-hosts --user user /home/NEWUSER/.ssh/id_rsa.pub /home/user/.ssh/id_rsa.pub.NEWUSER
+parallel-scp --hosts /usr/testbed/scripts/all-hosts --user user /home/NEWUSER/.ssh/id_rsa.pub /home/user/.ssh/id_rsa.pub.NEWUSER
 ###### d. add the user public key to PIs authorized_keys
-parallel-ssh --timeout 0 --hosts ./server/scripts/all-hosts --user user --inline "cat /home/user/.ssh/id_rsa.pub.NEWUSER >>/home/user/.ssh/authorized_keys"
+parallel-ssh --timeout 0 --hosts /usr/testbed/scripts/all-hosts --user user --inline "cat /home/user/.ssh/id_rsa.pub.NEWUSER >>/home/user/.ssh/authorized_keys"
