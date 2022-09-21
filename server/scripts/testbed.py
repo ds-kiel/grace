@@ -41,6 +41,7 @@ is_nested = False
 force_reboot = False
 forward_serial = False
 forward_serial_hosts = None
+trace_gpio = False
 
 MAX_START_ATTEMPTS = 3
 TESTBED_PATH = "/usr/testbed"
@@ -56,6 +57,9 @@ next_job_path_user = os.path.join(TESTBED_PATH, "next_job_%s" % (USER))
 user_queue_file = os.path.join(TESTBED_PATH, "next_user")
 testbed_info_file = os.path.join(TESTBED_PATH, "testbed_info")
 GENERAL_JOB_DIR = os.path.join(TESTBED_PATH, "jobs")
+REMOTE_LOGS_PATH = "/home/user/logs"
+DEV_REMOTE_GPIO_TRACER_PATH = "/usr/testbed/gpio-tracer/build/src"
+DEV_GPIO_COMBINE_PATH = "/usr/testbed/gpio-tracer/python/process-traces.py"
 
 
 def log(msg, toHistory=True, toConsole=True):
@@ -250,7 +254,7 @@ def load_curr_job_variables(need_curr_job, need_no_curr_job):
 
 def load_job_variables(user, job_id):
     """Load job-directory, platform, host-path and job-duration for given job."""
-    global job_dir, platform, hosts_path, duration, forward_serial
+    global job_dir, platform, hosts_path, duration, forward_serial, trace_gpio
     # check if the job exists
     job_dir = get_job_directory(user, job_id)
     if job_dir == None:
@@ -267,6 +271,7 @@ def load_job_variables(user, job_id):
     # get path to the duration file
     # duration_path = os.path.join(job_dir, "duration")
     duration = file_read(os.path.join(job_dir, "duration"))
+    trace_gpio = os.path.isfile(os.path.join(job_dir, ".tracing"))
     if duration != None:
         duration = int(duration)
 
@@ -382,6 +387,8 @@ def create(name, platform, hosts, copy_from, do_start, duration, metadata, post_
     # configure serial forwarding
     if forward_serial:
         file_write(os.path.join(job_dir, ".forward-serial"), "")
+    if trace_gpio:
+        file_write(os.path.join(job_dir, ".tracing"), "")  # write history
     # copy post-processing script, if any
     if post_processing:
         post_processing_path = os.path.join(job_dir, "post_processing.sh")
@@ -570,6 +577,10 @@ def start(job_id):
             start_script_path = os.path.join(
                 TESTBED_SCRIPTS_PATH, platform, "start.py")
             if os.path.exists(start_script_path) and subprocess.call([start_script_path, job_dir, "forward" if forward_serial else ""]) == 0:
+                if trace_gpio:
+                    remote_traces_dir = os.path.join(REMOTE_LOGS_PATH, os.path.basename(job_dir), "traces/")
+                    print("gpio trace location %s"%(remote_traces_dir))
+                    pssh(hosts_path, "%s %s %s %s"%(os.path.join(DEV_REMOTE_GPIO_TRACER_PATH, "gpiotc"), "--start", "--tracedir", remote_traces_dir), "Starting GPIO tracing")
                 started = True
             else:
                 print("Platform start script %s failed" % (start_script_path))
@@ -667,6 +678,12 @@ def stop(do_force):
     load_curr_job_variables(True, False)
     job_id = curr_job
     load_job_variables(curr_job_owner, job_id)
+
+    # Stop gpio tracing
+    if trace_gpio:
+        remote_traces_dir = os.path.join(REMOTE_LOGS_PATH, os.path.basename(job_dir), "traces/")
+        pssh(hosts_path, "%s %s %s %s"%(os.path.join(DEV_REMOTE_GPIO_TRACER_PATH, "gpiotc"), "--stop", "--tracedir", remote_traces_dir), "Stopping GPIO tracing")
+        # time.sleep(1)
     # cleanup the PI nodes
     # run platform stop script
     stop_script_path = os.path.join(TESTBED_SCRIPTS_PATH, platform, "stop.py")
@@ -710,6 +727,15 @@ def stop(do_force):
         command = "%s %u" % (post_processing_path, job_id)
         print("Running command: '%s'" % (command))
         os.system(command)
+    # combine gpio traces
+    if trace_gpio:
+        print("combining traces")
+        subprocess.call(["python3", DEV_GPIO_COMBINE_PATH, os.path.join(job_dir, "logs/")])
+    # start next job if requested HACK: Post processing should be done after starting the next job, start overwrites the job variables though
+    if do_start_next:
+        print("Starting next job")
+        start(None)
+
     print(history_message)
 
 
@@ -764,6 +790,7 @@ def usage():
     print("--with-reboot           'reboot the raspberry PIs if the job creation fails'")
     print("--forward-serial        'forwards the serial line data into a TCP socket (tcp://raspi:50000)'")
     print("--forward-serial-hosts  'set the serial host file containing all PI host forwarding the serial line data into a TCP socket (tcp://raspi:50000)'")
+    print("--trace-gpio       'record timestamped gpio samples'")
     print()
     print("Usage of start:")
     print(" $ testbed.py start [--job-id ID]")
@@ -803,6 +830,7 @@ if __name__ == "__main__":
         try:
             opts, args = getopt.getopt(sys.argv[2:], "", ["name=", "platform=", "hosts=", "copy-from=", "duration=", "job-id=", "start",
                                                           "force", "no-download", "start-next", "metadata=", "post-processing=", "nested", "with-reboot", "forward-serial", "forward-serial-hosts="])
+                                                          "force", "no-download", "start-next", "metadata=", "trace-gpio", "post-processing=", "nested", "with-reboot", "forward-serial", "forward-serial-hosts="])
         except getopt.GetoptError as e:
             print(e)
             usage()
@@ -827,6 +855,8 @@ if __name__ == "__main__":
                     sys.exit(1)
             elif opt == "--duration":
                 duration = value
+            elif opt == "--trace-gpio":
+                trace_gpio = True
             elif opt == "--start":
                 do_start = True
             elif opt == "--force":
